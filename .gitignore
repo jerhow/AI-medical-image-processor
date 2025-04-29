@@ -1,0 +1,42 @@
+## .NET Core / ASP.NET
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+## Visual Studio Code
+.vscode/
+
+## ASP.NET Publish Output
+wwwroot/dist/
+dist/
+.bundle/
+**/publish/
+
+# App deployment zip files
+**/app_deploy_*.zip
+
+## Secrets
+secrets.json
+appsettings.Development.json
+
+## Logs
+*.log
+logs/
+
+## macOS
+.DS_Store
+
+## Rider / JetBrains IDEs
+.idea/
+*.sln.iml
+
+## User-specific files
+*.swp
+*.bak
+*.tmp
+
+## dotenv files (if using for local secrets)
+.env
