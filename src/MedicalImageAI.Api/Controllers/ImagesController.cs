@@ -5,7 +5,9 @@ using Microsoft.Extensions.Logging; // Optional: for logging
 using System;
 using System.IO; // Required for Path
 using System.Threading.Tasks;
+using Azure.Storage.Sas;
 using MedicalImageAI.Api.Models;
+using MedicalImageAI.Api.Services;
 
 namespace MedicalImageAI.Api.Controllers;
 
@@ -16,12 +18,13 @@ public class ImagesController : ControllerBase
     private readonly ILogger<ImagesController> _logger;
     private readonly BlobServiceClient _blobServiceClient;
     private readonly string _containerName = "uploaded-images";
+    private readonly ICustomVisionService _customVisionService;
 
-    // Constructor for dependency injection (add ILogger if needed)
-    public ImagesController(ILogger<ImagesController> logger, BlobServiceClient blobServiceClient)
+    public ImagesController(ILogger<ImagesController> logger, BlobServiceClient blobServiceClient, ICustomVisionService customVisionService)
     {
         _logger = logger;
         _blobServiceClient = blobServiceClient;
+        _customVisionService = customVisionService;
     }
 
     [HttpGet("ping")] // Defines GET /api/images/ping
@@ -63,6 +66,7 @@ public class ImagesController : ControllerBase
 
         _logger?.LogInformation("Received file: {FileName}, Size: {FileSize}", imageFile.FileName, imageFile.Length);
 
+        // --- Upload to Azure Blob Storage ---
         try
         {
             // Reference to the container
@@ -89,13 +93,74 @@ public class ImagesController : ControllerBase
             // TODO: 3. Trigger Custom Vision analysis using blobClient.Uri.ToString()
             // TODO: 4. Save analysis metadata (blob URI, etc.) to Database
 
+
+
+
+            // ---> GENERATE SAS TOKEN FOR THE UPLOADED BLOB <---
+            string blobUriWithSas = string.Empty;
+            if (blobClient.CanGenerateSasUri)
+            {
+                // Define SAS parameters
+                BlobSasBuilder sasBuilder = new BlobSasBuilder()
+                {
+                    BlobContainerName = _containerName,
+                    BlobName = uniqueBlobName,
+                    Resource = "b", // "b" for blob
+                    StartsOn = DateTimeOffset.UtcNow.AddMinutes(-5), // Allow for clock skew
+                    ExpiresOn = DateTimeOffset.UtcNow.AddMinutes(5), // Grant access for 5 minutes
+                    Protocol = SasProtocol.Https // Require HTTPS
+                };
+                sasBuilder.SetPermissions(BlobSasPermissions.Read); // Grant only Read permission
+
+                // Generate the SAS URI
+                Uri sasUri = blobClient.GenerateSasUri(sasBuilder);
+                blobUriWithSas = sasUri.ToString();
+                _logger?.LogInformation("Generated SAS URI for analysis (valid for 5 mins).");
+            }
+            else
+            {
+                _logger?.LogError("Cannot generate SAS URI for blob: {BlobName}. Check credentials.", uniqueBlobName);
+                // Handle error - perhaps return a specific error code/message
+                // For now, we'll let it proceed and likely fail in the service call below
+                blobUriWithSas = blobClient.Uri.ToString(); // Fallback to base URI (will likely fail analysis)
+            }
+            // ---> END SAS TOKEN GENERATION <---
+
+
+
+
+
+
+
+
+
+            
+            // --- Call Custom Vision Service ---
+            // string blobUri = blobClient.Uri.ToString();
+            string blobUri = blobUriWithSas;
+            AnalysisResult? analysisResult = null;
+            try
+            {
+                analysisResult = await _customVisionService.AnalyzeImageAsync(blobUri);
+            }
+            catch (Exception serviceEx) // Catch potential errors from the service call itself
+            {
+                _logger?.LogError(serviceEx, "Error calling CustomVisionService for Blob URI {BlobUri}", blobUri);
+                // Decide how to handle - maybe return a specific error response
+            }
+
+
+            
             // Return the Blob URI + any relevant info
             var response = new UploadResponse
             {
                 FileName = uniqueBlobName,
-                BlobUri = blobClient.Uri.ToString(),
-                Message = $"File '{imageFile.FileName}' uploaded successfully as '{uniqueBlobName}'."
+                BlobUri = blobUri,
+                Message = $"File '{imageFile.FileName}' uploaded successfully as '{uniqueBlobName}'. Analysis performed.",
+                Analysis = analysisResult
             };
+
+
             return Ok(response);
 
         }

@@ -1,4 +1,5 @@
 using Azure.Storage.Blobs;
+using MedicalImageAI.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -9,6 +10,8 @@ builder.Services.AddSwaggerGen();
 
 // Azure Blob Service Client registration
 builder.Services.AddSingleton(x => new BlobServiceClient(builder.Configuration.GetValue<string>("BlobStorage:ConnectionString")));
+
+builder.Services.AddScoped<ICustomVisionService, CustomVisionService>();
 
 var app = builder.Build();
 
