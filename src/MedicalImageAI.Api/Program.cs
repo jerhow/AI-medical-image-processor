@@ -16,8 +16,9 @@ builder.Services.AddSingleton(x => new BlobServiceClient(builder.Configuration.G
 builder.Services.AddScoped<ICustomVisionService, CustomVisionService>();
 
 // Register the background queue as a singleton
+int backgroundQueueCapacity = builder.Configuration.GetValue<int>("BackgroundQueue:Capacity");
 builder.Services.AddSingleton<IBackgroundQueue<Func<IServiceProvider, CancellationToken, Task>>>(ctx => {
-    return new BackgroundQueue<Func<IServiceProvider, CancellationToken, Task>>(100); // Example capacity - adjust if needed
+    return new BackgroundQueue<Func<IServiceProvider, CancellationToken, Task>>(backgroundQueueCapacity);
 });
 
 builder.Services.AddHostedService<QueuedHostedService>();
