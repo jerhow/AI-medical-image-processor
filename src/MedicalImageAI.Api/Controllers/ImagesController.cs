@@ -44,28 +44,10 @@ public class ImagesController : ControllerBase
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> UploadImageAsync(IFormFile imageFile)
     {
-        // --- Basic Validation ---
-        if (imageFile == null || imageFile.Length == 0)
+        // --- Validate the file ---
+        if (!TryValidateImageFile(imageFile, out var validationResult))
         {
-            _logger?.LogWarning("Upload attempt with no file.");
-            return BadRequest("No file uploaded.");
-        }
-
-        // Basic check for allowed file types
-        var allowedExtensions = new[] { ".png", ".jpg", ".jpeg", ".bmp" }; // DICOM needs special handling later if we end up supporting it
-        var ext = Path.GetExtension(imageFile.FileName).ToLowerInvariant();
-        if (string.IsNullOrEmpty(ext) || !allowedExtensions.Contains(ext))
-        {
-            _logger?.LogWarning("Upload attempt with invalid file type: {FileName}", imageFile.FileName);
-            return BadRequest($"Invalid file type. Allowed types: {string.Join(", ", allowedExtensions)}");
-        }
-
-        // Check file size (e.g., limit to 4MB, Custom Vision has limits)
-        long maxFileSize = 4 * 1024 * 1024; // 4 MB
-        if (imageFile.Length > maxFileSize)
-        {
-                _logger?.LogWarning("Upload attempt with file exceeding size limit: {FileName}, Size: {FileSize}", imageFile.FileName, imageFile.Length);
-            return BadRequest($"File size exceeds the limit of {maxFileSize / 1024 / 1024} MB.");
+            return validationResult; // Return the specific BadRequest
         }
 
         _logger?.LogInformation("Received file: {FileName}, Size: {FileSize}", imageFile.FileName, imageFile.Length);
@@ -83,6 +65,7 @@ public class ImagesController : ControllerBase
             await containerClient.CreateIfNotExistsAsync(PublicAccessType.None); // Use PublicAccessType.None for private blobs
 
             // Generate a unique blob name to avoid overwrites
+            string ext = Path.GetExtension(imageFile.FileName).ToLowerInvariant();
             uniqueBlobName = $"{Guid.NewGuid()}{ext}"; // e.g., "guid.png"
 
             // Reference to the blob
@@ -172,5 +155,37 @@ public class ImagesController : ControllerBase
             _logger?.LogError(ex, "Error uploading file {FileName} to Blob Storage.", imageFile.FileName);
             return StatusCode(StatusCodes.Status500InternalServerError, "An unexpected error occurred while uploading the file for analysis.");
         }
+    }
+
+    private bool TryValidateImageFile(IFormFile imageFile, out IActionResult errorResult)
+    {
+        errorResult = Ok(); // Default to no error
+
+        if (imageFile == null || imageFile.Length == 0)
+        {
+            _logger?.LogWarning("Upload attempt with no file.");
+            errorResult = BadRequest("No file uploaded.");
+            return false;
+        }
+
+        var allowedExtensions = new[] { ".png", ".jpg", ".jpeg", ".bmp" }; // DICOM needs special handling later if we end up supporting it
+        string ext = Path.GetExtension(imageFile.FileName).ToLowerInvariant();
+        if (string.IsNullOrEmpty(ext) || !allowedExtensions.Contains(ext))
+        {
+            _logger?.LogWarning("Upload attempt with invalid file type: {FileName}", imageFile.FileName);
+            errorResult = BadRequest($"Invalid file type. Allowed types: {string.Join(", ", allowedExtensions)}");
+            return false;
+        }
+
+        // Check file size (e.g., limit to 4MB, Custom Vision has limits)
+        long maxFileSize = 4 * 1024 * 1024; // 4 MB
+        if (imageFile.Length > maxFileSize)
+        {
+            _logger?.LogWarning("Upload attempt with file exceeding size limit: {FileName}, Size: {FileSize}", imageFile.FileName, imageFile.Length);
+            errorResult = BadRequest($"File size exceeds the limit of {maxFileSize / 1024 / 1024} MB.");
+            return false;
+        }
+
+        return true; // File is valid
     }
 }
