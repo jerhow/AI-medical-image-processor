@@ -1,5 +1,4 @@
 using MedicalImageAI.Api.Models;
-using System.Threading.Tasks;
 
 namespace MedicalImageAI.Api.Services;
 

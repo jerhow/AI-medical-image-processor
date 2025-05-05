@@ -1,13 +1,10 @@
 using Azure.Storage.Blobs;
-using Azure.Storage.Blobs.Models; // For BlobHttpHeaders
+using Azure.Storage.Blobs.Models;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Logging; // Optional: for logging
-using System;
-using System.IO; // Required for Path
-using System.Threading.Tasks;
 using Azure.Storage.Sas;
 using MedicalImageAI.Api.Models;
 using MedicalImageAI.Api.Services;
+using MedicalImageAI.Api.BackgroundServices.Interfaces;
 
 namespace MedicalImageAI.Api.Controllers;
 
@@ -19,12 +16,18 @@ public class ImagesController : ControllerBase
     private readonly BlobServiceClient _blobServiceClient;
     private readonly string _containerName = "uploaded-images";
     private readonly ICustomVisionService _customVisionService;
+    private readonly IBackgroundQueue<Func<IServiceProvider, CancellationToken, Task>> _backgroundQueue;
 
-    public ImagesController(ILogger<ImagesController> logger, BlobServiceClient blobServiceClient, ICustomVisionService customVisionService)
+    public ImagesController(
+        ILogger<ImagesController> logger, 
+        BlobServiceClient blobServiceClient, 
+        ICustomVisionService customVisionService,
+        IBackgroundQueue<Func<IServiceProvider, CancellationToken, Task>> backgroundQueue)
     {
         _logger = logger;
         _blobServiceClient = blobServiceClient;
         _customVisionService = customVisionService;
+        _backgroundQueue = backgroundQueue;
     }
 
     [HttpGet("ping")] // Defines GET /api/images/ping
@@ -36,8 +39,9 @@ public class ImagesController : ControllerBase
     }
 
     [HttpPost("upload")] // Defines the route POST /api/images/upload
-    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status202Accepted)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> UploadImageAsync(IFormFile imageFile)
     {
         // --- Basic Validation ---
@@ -66,7 +70,11 @@ public class ImagesController : ControllerBase
 
         _logger?.LogInformation("Received file: {FileName}, Size: {FileSize}", imageFile.FileName, imageFile.Length);
 
+
         // --- Upload to Azure Blob Storage ---
+        string blobUriWithSas = string.Empty;
+        string uniqueBlobName = string.Empty;
+        string baseBlobUri = string.Empty;
         try
         {
             // Reference to the container
@@ -76,7 +84,7 @@ public class ImagesController : ControllerBase
             await containerClient.CreateIfNotExistsAsync(PublicAccessType.None); // Use PublicAccessType.None for private blobs
 
             // Generate a unique blob name to avoid overwrites
-            var uniqueBlobName = $"{Guid.NewGuid()}{ext}"; // e.g., "guid.png"
+            uniqueBlobName = $"{Guid.NewGuid()}{ext}"; // e.g., "guid.png"
 
             // Reference to the blob
             BlobClient blobClient = containerClient.GetBlobClient(uniqueBlobName);
@@ -87,17 +95,15 @@ public class ImagesController : ControllerBase
             {
                 await blobClient.UploadAsync(stream, new BlobHttpHeaders { ContentType = imageFile.ContentType });
             }
+            baseBlobUri = blobClient.Uri.ToString();
             _logger?.LogInformation("Upload successful. Blob URI: {BlobUri}", blobClient.Uri);
 
 
-            // TODO: 3. Trigger Custom Vision analysis using blobClient.Uri.ToString()
-            // TODO: 4. Save analysis metadata (blob URI, etc.) to Database
+            
 
 
 
-
-            // ---> GENERATE SAS TOKEN FOR THE UPLOADED BLOB <---
-            string blobUriWithSas = string.Empty;
+            // --- Generate a SAS token for the blob to allow Custom Vision to access it ---
             if (blobClient.CanGenerateSasUri)
             {
                 // Define SAS parameters
@@ -129,45 +135,53 @@ public class ImagesController : ControllerBase
 
 
 
-
-
-
-
-
-            
-            // --- Call Custom Vision Service ---
-            // string blobUri = blobClient.Uri.ToString();
-            string blobUri = blobUriWithSas;
-            AnalysisResult? analysisResult = null;
-            try
+            // --- Dispatch work item to the background queue for Custom Vision analysis ---
+            if (!string.IsNullOrEmpty(blobUriWithSas))
             {
-                analysisResult = await _customVisionService.AnalyzeImageAsync(blobUri);
+                // Define the work item as a delegate. Captures necessary variables (like blobUriWithSas).
+                Func<IServiceProvider, CancellationToken, Task> workItem = async (sp, ct) => {
+                    _logger?.LogInformation("Background task started for blob: {BlobUri}", baseBlobUri);
+                    
+                    // Resolve the scoped service HERE, inside the delegate
+                    var scopedVisionService = sp.GetRequiredService<ICustomVisionService>();
+                    
+                    // Call the Custom Vision service to analyze the image
+                    AnalysisResult analysisResult = await scopedVisionService.AnalyzeImageAsync(blobUriWithSas);
+
+                    // TODO: Update database record with analysisResult and set status to Completed/Failed
+
+                    _logger?.LogInformation("Background analysis complete for blob {BlobUri}. Success: {SuccessStatus}", baseBlobUri, analysisResult?.Success);
+                    if (analysisResult?.Success == true && analysisResult.Predictions.Any())
+                    {
+                        _logger?.LogInformation("Top prediction: {Tag} ({Prob}%)", analysisResult.Predictions.First().TagName, analysisResult.Predictions.First().Probability);
+                    } else if (analysisResult?.Success == false) {
+                        _logger?.LogError("Analysis failed for {BlobUri}: {Error}", baseBlobUri, analysisResult.ErrorMessage);
+                    }
+                };
+
+                // Enqueue the work item
+                await _backgroundQueue.QueueBackgroundWorkItemAsync(workItem);
+                _logger?.LogInformation("Analysis task queued for blob: {BlobUri}", baseBlobUri);
+                // --- END QUEUEING ---
+
+                // Return 202 Accepted immediately. Include info needed for client to potentially check status later.
+                // For now, just return the base URI and a message. DB ID would go here too.
+                return Accepted(new { Message = "File uploaded successfully. Analysis queued.", FileName = uniqueBlobName, BlobUri = baseBlobUri });
             }
-            catch (Exception serviceEx) // Catch potential errors from the service call itself
+            else
             {
-                _logger?.LogError(serviceEx, "Error calling CustomVisionService for Blob URI {BlobUri}", blobUri);
-                // Decide how to handle - maybe return a specific error response
+                // Handle case where SAS URI couldn't be generated
+                return StatusCode(StatusCodes.Status500InternalServerError, "File uploaded but could not prepare for analysis.");
             }
+            // --- END QUEUEING ---
 
 
-            
-            // Return the Blob URI + any relevant info
-            var response = new UploadResponse
-            {
-                FileName = uniqueBlobName,
-                BlobUri = blobUri,
-                Message = $"File '{imageFile.FileName}' uploaded successfully as '{uniqueBlobName}'. Analysis performed.",
-                Analysis = analysisResult
-            };
-
-
-            return Ok(response);
-
+            // TODO: 4. Save analysis metadata (blob URI, etc.) to Database
         }
         catch (Exception ex)
         {
             _logger?.LogError(ex, "Error uploading file {FileName} to Blob Storage.", imageFile.FileName);
-            return StatusCode(StatusCodes.Status500InternalServerError, "An unexpected error occurred while uploading the file.");
+            return StatusCode(StatusCodes.Status500InternalServerError, "An unexpected error occurred while uploading the file for analysis.");
         }
     }
 }
