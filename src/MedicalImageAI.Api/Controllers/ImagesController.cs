@@ -47,12 +47,12 @@ public class ImagesController : ControllerBase
         // --- Basic Validation ---
         if (imageFile == null || imageFile.Length == 0)
         {
-            _logger?.LogWarning("Upload attempt with no file."); // Optional logging
+            _logger?.LogWarning("Upload attempt with no file.");
             return BadRequest("No file uploaded.");
         }
 
-        // Optional: Basic check for allowed file types (more robust checks exist)
-        var allowedExtensions = new[] { ".png", ".jpg", ".jpeg", ".bmp" }; // DICOM needs special handling later
+        // Basic check for allowed file types
+        var allowedExtensions = new[] { ".png", ".jpg", ".jpeg", ".bmp" }; // DICOM needs special handling later if we end up supporting it
         var ext = Path.GetExtension(imageFile.FileName).ToLowerInvariant();
         if (string.IsNullOrEmpty(ext) || !allowedExtensions.Contains(ext))
         {
@@ -60,7 +60,7 @@ public class ImagesController : ControllerBase
             return BadRequest($"Invalid file type. Allowed types: {string.Join(", ", allowedExtensions)}");
         }
 
-        // Optional: Check file size (e.g., limit to 4MB, Custom Vision has limits)
+        // Check file size (e.g., limit to 4MB, Custom Vision has limits)
         long maxFileSize = 4 * 1024 * 1024; // 4 MB
         if (imageFile.Length > maxFileSize)
         {
@@ -69,7 +69,6 @@ public class ImagesController : ControllerBase
         }
 
         _logger?.LogInformation("Received file: {FileName}, Size: {FileSize}", imageFile.FileName, imageFile.Length);
-
 
         // --- Upload to Azure Blob Storage ---
         string blobUriWithSas = string.Empty;
@@ -98,11 +97,6 @@ public class ImagesController : ControllerBase
             baseBlobUri = blobClient.Uri.ToString();
             _logger?.LogInformation("Upload successful. Blob URI: {BlobUri}", blobClient.Uri);
 
-
-            
-
-
-
             // --- Generate a SAS token for the blob to allow Custom Vision to access it ---
             if (blobClient.CanGenerateSasUri)
             {
@@ -130,10 +124,6 @@ public class ImagesController : ControllerBase
                 // For now, we'll let it proceed and likely fail in the service call below
                 blobUriWithSas = blobClient.Uri.ToString(); // Fallback to base URI (will likely fail analysis)
             }
-            // ---> END SAS TOKEN GENERATION <---
-
-
-
 
             // --- Dispatch work item to the background queue for Custom Vision analysis ---
             if (!string.IsNullOrEmpty(blobUriWithSas))
@@ -162,7 +152,7 @@ public class ImagesController : ControllerBase
                 // Enqueue the work item
                 await _backgroundQueue.QueueBackgroundWorkItemAsync(workItem);
                 _logger?.LogInformation("Analysis task queued for blob: {BlobUri}", baseBlobUri);
-                // --- END QUEUEING ---
+                // --- End queueing ---
 
                 // Return 202 Accepted immediately. Include info needed for client to potentially check status later.
                 // For now, just return the base URI and a message. DB ID would go here too.
@@ -173,7 +163,6 @@ public class ImagesController : ControllerBase
                 // Handle case where SAS URI couldn't be generated
                 return StatusCode(StatusCodes.Status500InternalServerError, "File uploaded but could not prepare for analysis.");
             }
-            // --- END QUEUEING ---
 
 
             // TODO: 4. Save analysis metadata (blob URI, etc.) to Database
