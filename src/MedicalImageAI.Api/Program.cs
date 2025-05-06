@@ -10,10 +10,14 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// Azure Blob Service Client registration
-builder.Services.AddSingleton(x => new BlobServiceClient(builder.Configuration.GetValue<string>("BlobStorage:ConnectionString")));
-
+// Register the Custom Vision service
 builder.Services.AddScoped<ICustomVisionService, CustomVisionService>();
+
+// Register the Blob Storage service
+builder.Services.AddScoped<IBlobStorageService, BlobStorageService>();
+
+// Register the Blob Service Client as a singleton
+builder.Services.AddSingleton(x => new BlobServiceClient(builder.Configuration.GetValue<string>("BlobStorage:ConnectionString")));
 
 // Register the background queue as a singleton
 int backgroundQueueCapacity = builder.Configuration.GetValue<int>("BackgroundQueue:Capacity");

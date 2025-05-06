@@ -1,7 +1,4 @@
-using Azure.Storage.Blobs;
-using Azure.Storage.Blobs.Models;
 using Microsoft.AspNetCore.Mvc;
-using Azure.Storage.Sas;
 using MedicalImageAI.Api.Models;
 using MedicalImageAI.Api.Services;
 using MedicalImageAI.Api.BackgroundServices.Interfaces;
@@ -13,20 +10,19 @@ namespace MedicalImageAI.Api.Controllers;
 public class ImagesController : ControllerBase
 {
     private readonly ILogger<ImagesController> _logger;
-    private readonly BlobServiceClient _blobServiceClient;
-    private readonly string _containerName = "uploaded-images";
     private readonly ICustomVisionService _customVisionService;
     private readonly IBackgroundQueue<Func<IServiceProvider, CancellationToken, Task>> _backgroundQueue;
+    private readonly IBlobStorageService _blobStorageService;
 
     public ImagesController(
         ILogger<ImagesController> logger, 
-        BlobServiceClient blobServiceClient, 
         ICustomVisionService customVisionService,
+        IBlobStorageService blobStorageService,
         IBackgroundQueue<Func<IServiceProvider, CancellationToken, Task>> backgroundQueue)
     {
         _logger = logger;
-        _blobServiceClient = blobServiceClient;
         _customVisionService = customVisionService;
+        _blobStorageService = blobStorageService;
         _backgroundQueue = backgroundQueue;
     }
 
@@ -38,13 +34,23 @@ public class ImagesController : ControllerBase
         return Ok("Pong from API");
     }
 
+    /// <summary>
+    /// Controller action to handle image uploads.
+    /// Validates the file, uploads it to Azure Blob Storage, generates a SAS URI for analysis,
+    /// and queues a background task for Custom Vision analysis.
+    /// Returns a 202 Accepted response with the blob URI and a message.
+    /// If any validation fails, returns a 400 Bad Request with the specific error message.
+    /// If an unexpected error occurs, returns a 500 Internal Server Error.
+    /// </summary>
+    /// <param name="imageFile"></param>
+    /// <returns></returns>
     [HttpPost("upload")] // Defines the route POST /api/images/upload
     [ProducesResponseType(StatusCodes.Status202Accepted)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> UploadImageAsync(IFormFile imageFile)
     {
-        // --- Validate the file ---
+        // --- Validate the image file ---
         if (!TryValidateImageFile(imageFile, out var validationResult))
         {
             return validationResult; // Return the specific BadRequest
@@ -58,60 +64,26 @@ public class ImagesController : ControllerBase
         string baseBlobUri = string.Empty;
         try
         {
-            // Reference to the container
-            BlobContainerClient containerClient = _blobServiceClient.GetBlobContainerClient(_containerName);
-
-            // Create the container if it doesn't exist
-            await containerClient.CreateIfNotExistsAsync(PublicAccessType.None); // Use PublicAccessType.None for private blobs
-
-            // Generate a unique blob name to avoid overwrites
-            string ext = Path.GetExtension(imageFile.FileName).ToLowerInvariant();
-            uniqueBlobName = $"{Guid.NewGuid()}{ext}"; // e.g., "guid.png"
-
-            // Reference to the blob
-            BlobClient blobClient = containerClient.GetBlobClient(uniqueBlobName);
-
-            // Upload the file stream to the blob
-            _logger?.LogInformation("Uploading to Blob Storage as blob: {BlobName}", uniqueBlobName);
+            // Call the blob storage service to upload
             using (var stream = imageFile.OpenReadStream())
             {
-                await blobClient.UploadAsync(stream, new BlobHttpHeaders { ContentType = imageFile.ContentType });
+                (uniqueBlobName, baseBlobUri) = await _blobStorageService.UploadImageAsync(stream, imageFile.FileName, imageFile.ContentType);
             }
-            baseBlobUri = blobClient.Uri.ToString();
-            _logger?.LogInformation("Upload successful. Blob URI: {BlobUri}", blobClient.Uri);
+            _logger?.LogInformation("Upload successful via service. Base Blob URI: {BlobUri}", baseBlobUri);
 
-            // --- Generate a SAS token for the blob to allow Custom Vision to access it ---
-            if (blobClient.CanGenerateSasUri)
+            // Call the blob storage service to get SAS URI
+            blobUriWithSas = await _blobStorageService.GenerateReadSasUriAsync(uniqueBlobName);
+            if (string.IsNullOrEmpty(blobUriWithSas))
             {
-                // Define SAS parameters
-                BlobSasBuilder sasBuilder = new BlobSasBuilder()
-                {
-                    BlobContainerName = _containerName,
-                    BlobName = uniqueBlobName,
-                    Resource = "b", // "b" for blob
-                    StartsOn = DateTimeOffset.UtcNow.AddMinutes(-5), // Allow for clock skew
-                    ExpiresOn = DateTimeOffset.UtcNow.AddMinutes(5), // Grant access for 5 minutes
-                    Protocol = SasProtocol.Https // Require HTTPS
-                };
-                sasBuilder.SetPermissions(BlobSasPermissions.Read); // Grant only Read permission
-
-                // Generate the SAS URI
-                Uri sasUri = blobClient.GenerateSasUri(sasBuilder);
-                blobUriWithSas = sasUri.ToString();
-                _logger?.LogInformation("Generated SAS URI for analysis (valid for 5 mins).");
+                _logger?.LogError("Failed to generate SAS URI for blob: {BlobName}.", uniqueBlobName);
+                return StatusCode(StatusCodes.Status500InternalServerError, "Failed to generate SAS URI for analysis.");
             }
-            else
-            {
-                _logger?.LogError("Cannot generate SAS URI for blob: {BlobName}. Check credentials.", uniqueBlobName);
-                // Handle error - perhaps return a specific error code/message
-                // For now, we'll let it proceed and likely fail in the service call below
-                blobUriWithSas = blobClient.Uri.ToString(); // Fallback to base URI (will likely fail analysis)
-            }
-
-            // --- Dispatch work item to the background queue for Custom Vision analysis ---
+            _logger?.LogInformation("Generated SAS URI via service.");
+                        
+            // --- Create and dispatch the work item to the background queue for Custom Vision analysis ---
             if (!string.IsNullOrEmpty(blobUriWithSas))
             {
-                // Define the work item as a delegate. Captures necessary variables (like blobUriWithSas).
+                // Define the work item as a Func delegate. Captures necessary variables (like blobUriWithSas).
                 Func<IServiceProvider, CancellationToken, Task> workItem = async (sp, ct) => {
                     _logger?.LogInformation("Background task started for blob: {BlobUri}", baseBlobUri);
                     
@@ -147,7 +119,6 @@ public class ImagesController : ControllerBase
                 return StatusCode(StatusCodes.Status500InternalServerError, "File uploaded but could not prepare for analysis.");
             }
 
-
             // TODO: 4. Save analysis metadata (blob URI, etc.) to Database
         }
         catch (Exception ex)
@@ -157,6 +128,15 @@ public class ImagesController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Validates the uploaded image file.
+    /// Checks for null, empty file, valid file type, and size.
+    /// If any validation fails, sets the errorResult to a BadRequest result with an appropriate message.
+    /// Returns true if the file is valid, false otherwise.
+    /// </summary>
+    /// <param name="imageFile"></param>
+    /// <param name="errorResult"></param>
+    /// <returns></returns>
     private bool TryValidateImageFile(IFormFile imageFile, out IActionResult errorResult)
     {
         errorResult = Ok(); // Default to no error
