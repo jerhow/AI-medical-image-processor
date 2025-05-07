@@ -1,0 +1,65 @@
+@page
+@model MedicalImageAI.Web.Pages.UploadModel
+@{
+    ViewData["Title"] = "Upload Medical Image for Analysis";
+}
+
+<h1>@ViewData["Title"]</h1>
+
+<div class="row">
+    <div class="col-md-8">
+        <p>Select an image file (PNG, JPG, JPEG, BMP - Max 4MB) to upload for analysis.</p>
+        <p>Analysis will be performed in the background. This page will confirm if your upload was accepted for processing.</p>
+        
+        <form method="post" enctype="multipart/form-data" class="mt-4">
+            <div asp-validation-summary="ModelOnly" class="text-danger"></div> @* Shows model-level errors *@
+
+            <div class="mb-3">
+                <label asp-for="UploadedImage" class="form-label">Choose Image:</label>
+                <input asp-for="UploadedImage" class="form-control" type="file" required>
+                <span asp-validation-for="UploadedImage" class="text-danger"></span>
+            </div>
+            
+            <button type="submit" class="btn btn-primary">Upload and Queue for Analysis</button>
+        </form>
+    </div>
+</div>
+
+@if (Model.PageResponse != null)
+{
+    <hr class="mt-4 mb-4" />
+    <div class="row">
+        <div class="col-md-8">
+            <h2>Upload Status</h2>
+            <div class="alert alert-success" role="alert">
+                <h4 class="alert-heading">Request Accepted!</h4>
+                <p>@Model.PageResponse.Message</p>
+                <hr>
+                <p class="mb-0">Server Filename: <strong>@Model.PageResponse.FileName</strong></p>
+                @* We might choose not to display the full blob URI to the end-user directly for simplicity
+                   or if it contains sensitive info like SAS tokens (though our base URI doesn't) 
+                <p class="mb-0">Storage URI: @Model.PageResponse.BlobUri</p> 
+                *@
+                <p class="mt-2">The analysis is now running in the background. A future version of this page will allow you to check the status and view results.</p>
+            </div>
+        </div>
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(Model.ErrorMessage))
+{
+    <hr class="mt-4 mb-4" />
+    <div class="row">
+        <div class="col-md-8">
+            <h2>Error</h2>
+            <div class="alert alert-danger" role="alert">
+                <h4 class="alert-heading">An error occurred:</h4>
+                <p>@Model.ErrorMessage</p>
+            </div>
+        </div>
+    </div>
+}
+
+@section Scripts {
+    @{await Html.RenderPartialAsync("_ValidationScriptsPartial");}
+}

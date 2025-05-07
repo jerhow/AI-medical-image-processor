@@ -3,6 +3,8 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 builder.Services.AddRazorPages();
 
+builder.Services.AddHttpClient(); // Register HttpClientFactory so that it can be injected into view models for making API calls
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
