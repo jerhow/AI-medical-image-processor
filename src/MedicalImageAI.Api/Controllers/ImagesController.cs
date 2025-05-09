@@ -2,6 +2,9 @@ using Microsoft.AspNetCore.Mvc;
 using MedicalImageAI.Api.Models;
 using MedicalImageAI.Api.Services;
 using MedicalImageAI.Api.BackgroundServices.Interfaces;
+using MedicalImageAI.Api.Data;
+using MedicalImageAI.Api.Entities;
+using System.Text.Json;
 
 namespace MedicalImageAI.Api.Controllers;
 
@@ -10,20 +13,21 @@ namespace MedicalImageAI.Api.Controllers;
 public class ImagesController : ControllerBase
 {
     private readonly ILogger<ImagesController> _logger;
-    private readonly ICustomVisionService _customVisionService;
     private readonly IBackgroundQueue<Func<IServiceProvider, CancellationToken, Task>> _backgroundQueue;
     private readonly IBlobStorageService _blobStorageService;
+    private readonly ApplicationDbContext _dbContext;
 
     public ImagesController(
         ILogger<ImagesController> logger, 
         ICustomVisionService customVisionService,
         IBlobStorageService blobStorageService,
+        ApplicationDbContext dbContext,
         IBackgroundQueue<Func<IServiceProvider, CancellationToken, Task>> backgroundQueue)
     {
         _logger = logger;
-        _customVisionService = customVisionService;
         _blobStorageService = blobStorageService;
         _backgroundQueue = backgroundQueue;
+        _dbContext = dbContext;
     }
 
     [HttpGet("ping")] // Defines GET /api/images/ping
@@ -37,94 +41,165 @@ public class ImagesController : ControllerBase
     /// <summary>
     /// Controller action to handle image uploads.
     /// Validates the file, uploads it to Azure Blob Storage, generates a SAS URI for analysis,
-    /// and queues a background task for Custom Vision analysis.
-    /// Returns a 202 Accepted response with the blob URI and a message.
-    /// If any validation fails, returns a 400 Bad Request with the specific error message.
-    /// If an unexpected error occurs, returns a 500 Internal Server Error.
+    /// queues a background task (`ImageAnalysisJob`) for Custom Vision analysis, and marks the job as "Queued" in the database.
+    /// /// Returns a 202 Accepted response with the blob URI and a message.
+    /// The queued `ImageAnalysisJob` will also update its DB status to "Processing" when the background task starts and to "Completed" or "Failed" based on the analysis result.
     /// </summary>
     /// <param name="imageFile"></param>
     /// <returns></returns>
-    [HttpPost("upload")] // Defines the route POST /api/images/upload
-    [ProducesResponseType(StatusCodes.Status202Accepted)]
+    [HttpPost("upload")]
+    [ProducesResponseType(StatusCodes.Status202Accepted, Type = typeof(UploadAcceptedResponse))] // Specify response type
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> UploadImageAsync(IFormFile imageFile)
     {
-        // --- Validate the image file ---
         if (!TryValidateImageFile(imageFile, out var validationResult))
         {
-            return validationResult; // Return the specific BadRequest
+            return validationResult;
         }
 
-        _logger?.LogInformation("Received file: {FileName}, Size: {FileSize}", imageFile.FileName, imageFile.Length);
+        _logger.LogInformation("Received valid file: {FileName}, Size: {FileSize}", imageFile.FileName, imageFile.Length);
 
-        // --- Upload to Azure Blob Storage ---
-        string blobUriWithSas = string.Empty;
         string uniqueBlobName = string.Empty;
         string baseBlobUri = string.Empty;
+        string blobUriWithSas = string.Empty;
+        Guid jobId = Guid.Empty; // The DB record ID
+
         try
         {
-            // Call the blob storage service to upload
             using (var stream = imageFile.OpenReadStream())
             {
                 (uniqueBlobName, baseBlobUri) = await _blobStorageService.UploadImageAsync(stream, imageFile.FileName, imageFile.ContentType);
             }
-            _logger?.LogInformation("Upload successful via service. Base Blob URI: {BlobUri}", baseBlobUri);
+            _logger.LogInformation("Upload successful via service. Base Blob URI: {BlobUri}", baseBlobUri);
 
-            // Call the blob storage service to get SAS URI
             blobUriWithSas = await _blobStorageService.GenerateReadSasUriAsync(uniqueBlobName);
             if (string.IsNullOrEmpty(blobUriWithSas))
             {
-                _logger?.LogError("Failed to generate SAS URI for blob: {BlobName}.", uniqueBlobName);
+                _logger.LogError("Failed to generate SAS URI for blob: {BlobName}.", uniqueBlobName);
                 return StatusCode(StatusCodes.Status500InternalServerError, "Failed to generate SAS URI for analysis.");
             }
-            _logger?.LogInformation("Generated SAS URI via service.");
-                        
-            // --- Create and dispatch the work item to the background queue for Custom Vision analysis ---
-            if (!string.IsNullOrEmpty(blobUriWithSas))
+            _logger.LogInformation("Generated SAS URI via service.");
+
+            // --- Create and save initial DB record ---
+            var newJob = new ImageAnalysisJob
             {
-                // Define the work item as a Func delegate. Captures necessary variables (like blobUriWithSas).
-                Func<IServiceProvider, CancellationToken, Task> workItem = async (sp, ct) => {
-                    _logger?.LogInformation("Background task started for blob: {BlobUri}", baseBlobUri);
-                    
-                    // Resolve the scoped service HERE, inside the delegate
-                    var scopedVisionService = sp.GetRequiredService<ICustomVisionService>();
-                    
-                    // Call the Custom Vision service to analyze the image
-                    AnalysisResult analysisResult = await scopedVisionService.AnalyzeImageAsync(blobUriWithSas);
+                // NOTE: Constructor sets Id, UploadTimestamp, and default Status ("Queued")
+                OriginalFileName = imageFile.FileName,
+                BlobUri = baseBlobUri, // Base URI (without SAS)
+            };
 
-                    // TODO: Update database record with analysisResult and set status to Completed/Failed
+            try
+            {
+                _dbContext.ImageAnalysisJobs.Add(newJob); // Use Add, AddAsync is usually for special cases
+                await _dbContext.SaveChangesAsync();
+                jobId = newJob.Id; // Get the generated ID
+                _logger.LogInformation("Created initial job record with ID: {JobId} for blob {BlobUri}", jobId, baseBlobUri);
+            }
+            catch (Exception dbEx)
+            {
+                _logger.LogError(dbEx, "Failed to save initial job record to database for blob {BlobUri}", baseBlobUri);
+                // TODO: Delete the uploaded blob here to avoid orphaned files
+                return StatusCode(StatusCodes.Status500InternalServerError, "Failed to create analysis job record.");
+            }
+            // --- /Create and save initial DB record ---
 
-                    _logger?.LogInformation("Background analysis complete for blob {BlobUri}. Success: {SuccessStatus}", baseBlobUri, analysisResult?.Success);
-                    if (analysisResult?.Success == true && analysisResult.Predictions.Any())
+            // --- Dispatch work item to the background queue ---
+            // Defines the work item as a Func delegate. Captures necessary variables.
+            Func<IServiceProvider, CancellationToken, Task> workItem = async (sp, ct) =>
+            {
+                _logger.LogInformation("Background task started for JobId: {JobId}, Blob: {BlobUri}", jobId, baseBlobUri);
+                AnalysisResult analysisResult = new AnalysisResult();
+                string finalStatus = "Failed";
+                string analysisJson = string.Empty;
+
+                // Resolve scoped services HERE, inside the delegate
+                var scopedDbContext = sp.GetRequiredService<ApplicationDbContext>();
+                var scopedVisionService = sp.GetRequiredService<ICustomVisionService>();
+
+                ImageAnalysisJob? jobToProcess = null;
+                try
+                {
+                    // Mark as Processing in DB
+                    jobToProcess = await scopedDbContext.ImageAnalysisJobs.FindAsync(new object[] { jobId }, ct);
+                    if (jobToProcess == null)
                     {
-                        _logger?.LogInformation("Top prediction: {Tag} ({Prob}%)", analysisResult.Predictions.First().TagName, analysisResult.Predictions.First().Probability);
-                    } else if (analysisResult?.Success == false) {
-                        _logger?.LogError("Analysis failed for {BlobUri}: {Error}", baseBlobUri, analysisResult.ErrorMessage);
+                        _logger.LogError("Job record {JobId} not found when attempting to start processing.", jobId);
+                        return; // Exit task if job not found
                     }
-                };
+                    jobToProcess.Status = "Processing";
+                    jobToProcess.ProcessingStartedTimestamp = DateTime.UtcNow;
+                    await scopedDbContext.SaveChangesAsync(ct);
+                    _logger.LogInformation("Job {JobId} status updated to Processing.", jobId);
 
-                // Enqueue the work item
-                await _backgroundQueue.QueueBackgroundWorkItemAsync(workItem);
-                _logger?.LogInformation("Analysis task queued for blob: {BlobUri}", baseBlobUri);
-                // --- End queueing ---
+                    // Call the Custom Vision service to analyze the image
+                    analysisResult = await scopedVisionService.AnalyzeImageAsync(blobUriWithSas); // Use SAS URI here
 
-                // Return 202 Accepted immediately. Include info needed for client to potentially check status later.
-                // For now, just return the base URI and a message. DB ID would go here too.
-                return Accepted(new { Message = "File uploaded successfully. Analysis queued.", FileName = uniqueBlobName, BlobUri = baseBlobUri });
-            }
-            else
+                    // Prepare results for DB
+                    analysisJson = JsonSerializer.Serialize(analysisResult, new JsonSerializerOptions { WriteIndented = false });
+                    finalStatus = analysisResult?.Success == true ? "Completed" : "Failed";
+                    _logger.LogInformation("Background analysis finished for JobId {JobId}. Status: {Status}", jobId, finalStatus);
+                }
+                catch (Exception taskEx)
+                {
+                    _logger.LogError(taskEx, "Error during background analysis task for JobId {JobId}", jobId);
+                    finalStatus = "Failed";
+                    // Serialize a minimal error object if analysisResult is null
+                    analysisJson = JsonSerializer.Serialize(new AnalysisResult { ErrorMessage = $"Background task failed: {taskEx.Message}", Predictions = new List<PredictionModel>() });
+                }
+                finally // Ensure DB is updated with the final status and result
+                {
+                    try
+                    {
+                        // Re-fetch or use existing jobToProcess if still valid and DB context is not disposed by error
+                        if (jobToProcess == null)
+                        {
+                            jobToProcess = await scopedDbContext.ImageAnalysisJobs.FindAsync(new object[] { jobId }, ct);
+                        }
+                        
+                        if (jobToProcess != null)
+                        {
+                            jobToProcess.Status = finalStatus;
+                            jobToProcess.AnalysisResultJson = analysisJson;
+                            jobToProcess.CompletedTimestamp = DateTime.UtcNow;
+                            await scopedDbContext.SaveChangesAsync(ct);
+                            _logger.LogInformation("Successfully updated job record {JobId} with final status {Status}", jobId, finalStatus);
+                        }
+                        else
+                        {
+                            _logger.LogError("Job record {JobId} not found for final update. This should not happen if initial save succeeded.", jobId);
+                        }
+                    }
+                    catch (Exception finalDbEx)
+                    {
+                        _logger.LogCritical(finalDbEx, "CRITICAL: Failed to update job record {JobId} with final status {Status} after analysis attempt.", jobId, finalStatus);
+                        // This is a critical failure. The job processed, but its final state couldn't be saved.
+                        // TODO: May add this to a dead-letter queue or some other form of alerting.
+                    }
+                }
+            };
+
+            await _backgroundQueue.QueueBackgroundWorkItemAsync(workItem);
+            _logger.LogInformation("Analysis task queued for JobId: {JobId}", jobId);
+
+            // Return 202 Accepted with the Job ID and other relevant info
+            var acceptedResponse = new UploadAcceptedResponse
             {
-                // Handle case where SAS URI couldn't be generated
-                return StatusCode(StatusCodes.Status500InternalServerError, "File uploaded but could not prepare for analysis.");
-            }
-
-            // TODO: 4. Save analysis metadata (blob URI, etc.) to Database
+                Message = "File uploaded successfully. Analysis queued.",
+                JobId = jobId,
+                FileName = uniqueBlobName, // The unique name given by the server
+                BlobUri = baseBlobUri    // The base URI of the blob
+            };
+            
+            // Optionally generate a status check URL when we have that endpoint ready:
+            // string statusUrl = Url.ActionLink(nameof(GetAnalysisStatus), "Images", new { jobId = jobId });
+            // return Accepted(statusUrl, acceptedResponse);
+            return Accepted(acceptedResponse); // Simplified for now
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Error uploading file {FileName} to Blob Storage.", imageFile.FileName);
-            return StatusCode(StatusCodes.Status500InternalServerError, "An unexpected error occurred while uploading the file for analysis.");
+            _logger.LogError(ex, "Outer error in upload process for file {FileName}.", imageFile?.FileName ?? "N/A");
+            return StatusCode(StatusCodes.Status500InternalServerError, "An unexpected error occurred during the upload process.");
         }
     }
 
