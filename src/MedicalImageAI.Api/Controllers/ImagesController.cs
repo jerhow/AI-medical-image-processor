@@ -5,6 +5,7 @@ using MedicalImageAI.Api.BackgroundServices.Interfaces;
 using MedicalImageAI.Api.Data;
 using MedicalImageAI.Api.Entities;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore; // For ToListAsync, FirstOrDefaultAsync etc. if needed
 
 namespace MedicalImageAI.Api.Controllers;
 
@@ -200,6 +201,80 @@ public class ImagesController : ControllerBase
         {
             _logger.LogError(ex, "Outer error in upload process for file {FileName}.", imageFile?.FileName ?? "N/A");
             return StatusCode(StatusCodes.Status500InternalServerError, "An unexpected error occurred during the upload process.");
+        }
+    }
+
+    [HttpGet("{jobId}/analysis", Name = "GetAnalysisStatus")]
+    [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(AnalysisStatusResponse))]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> GetAnalysisStatusAsync(Guid jobId)
+    {
+        _logger.LogInformation("Request received for analysis status of JobId: {JobId}", jobId);
+
+        try
+        {
+            var job = await _dbContext.ImageAnalysisJobs.FindAsync(jobId);
+
+            if (job == null)
+            {
+                _logger.LogWarning("JobId {JobId} not found.", jobId);
+                return NotFound(new { Message = $"Job with ID {jobId} not found." });
+            }
+
+            AnalysisResult? analysisResult = null;
+            if (job.Status == "Completed" && !string.IsNullOrEmpty(job.AnalysisResultJson))
+            {
+                try
+                {
+                    analysisResult = JsonSerializer.Deserialize<AnalysisResult>(
+                        job.AnalysisResultJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
+                    );
+                }
+                catch (JsonException jsonEx)
+                {
+                    _logger.LogError(jsonEx, "Failed to deserialize AnalysisResultJson for JobId {JobId}", jobId);
+                    // Optionally, we could set job.Status to "FailedDeserialization" or similar here
+                    // and return an error, or just return the job with a null analysis.
+                    // For now, just reflect that analysis wasn't retrievable via the status.
+                    job.Status = "ErrorDeserializingResult"; // Temporary status to indicate issue
+                }
+            }
+            else if (job.Status == "Failed" && !string.IsNullOrEmpty(job.AnalysisResultJson))
+            {
+                // If it failed, AnalysisResultJson might contain an error message
+                try
+                {
+                    analysisResult = JsonSerializer.Deserialize<AnalysisResult>(
+                        job.AnalysisResultJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
+                    );
+                }
+                catch (JsonException jsonEx)
+                {
+                    _logger.LogError(jsonEx, "Failed to deserialize AnalysisResultJson (for failed job) for JobId {JobId}", jobId);
+                    analysisResult = new AnalysisResult { ErrorMessage = "Could not parse stored error details." };
+                }
+            }
+
+
+            var response = new AnalysisStatusResponse
+            {
+                JobId = job.Id,
+                Status = job.Status,
+                UploadTimestamp = job.UploadTimestamp,
+                ProcessingStartedTimestamp = job.ProcessingStartedTimestamp,
+                CompletedTimestamp = job.CompletedTimestamp,
+                Analysis = analysisResult, // Will be null if not completed or if deserialization fails
+                OriginalFileName = job.OriginalFileName,
+                BlobUri = job.BlobUri
+            };
+
+            return Ok(response);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving analysis status for JobId {JobId}", jobId);
+            return StatusCode(StatusCodes.Status500InternalServerError, "An unexpected error occurred while retrieving job status.");
         }
     }
 
