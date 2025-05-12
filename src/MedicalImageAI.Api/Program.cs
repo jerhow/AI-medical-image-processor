@@ -4,12 +4,64 @@ using MedicalImageAI.Api.Services;
 using MedicalImageAI.Api.BackgroundServices;
 using MedicalImageAI.Api.BackgroundServices.Interfaces;
 using MedicalImageAI.Api.Data;
-using MedicalImageAI.Api.Entities;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+// --- Add CORS services and define a policy ---
+string CORSPolicyAllowSpecificOrigins = "_corsPolicyAllowSpecificOrigins"; // CORS policy name
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy(
+        name: CORSPolicyAllowSpecificOrigins,
+        policy =>
+        {
+            // Read allowed origins from configuration
+            var allowedOriginsSetting = builder.Configuration["AllowedCorsOrigins"];
+            if (!string.IsNullOrEmpty(allowedOriginsSetting))
+            {
+                var origins = allowedOriginsSetting.Split(',')
+                    .Select(o => o.Trim())
+                    .Where(o => !string.IsNullOrEmpty(o))
+                    .ToArray();
+
+                if (origins.Any())
+                {
+                    policy.WithOrigins(origins)
+                        .AllowAnyHeader()
+                        .AllowAnyMethod();
+                    // TODO: Log the origins being used for diagnostics
+                    // var logger = builder.Services.BuildServiceProvider().GetRequiredService<ILogger<Program>>();
+                    // logger.LogInformation("CORS policy configured for origins: {Origins}", string.Join(", ", origins));
+                }
+                else
+                {
+                    // No origins configured, policy will be restrictive (no origins allowed)
+                    // TODO: Log a warning
+                    // var logger = builder.Services.BuildServiceProvider().GetRequiredService<ILogger<Program>>();
+                    // logger.LogWarning("AllowedCorsOrigins configuration is empty. CORS policy will be highly restrictive.");
+                }
+            }
+            else
+            {
+                // AllowedCorsOrigins not found in configuration
+                // This is a fallback for local development
+                if (builder.Environment.IsDevelopment())
+                {
+                    policy.WithOrigins("http://localhost:5272", "https://localhost:7232")
+                        .AllowAnyHeader()
+                        .AllowAnyMethod();
+                    // var logger = builder.Services.BuildServiceProvider().GetRequiredService<ILogger<Program>>();
+                    // logger.LogWarning("AllowedCorsOrigins not configured, using default development origins.");
+                }
+                
+                // else for production, it would remain restrictive (no origins allowed by default)
+            }
+        });
+});
+
+// --- Add services to the web application container ---
 builder.Services.AddControllers();
+
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
@@ -32,8 +84,8 @@ builder.Services.AddSingleton<IBackgroundQueue<Func<IServiceProvider, Cancellati
 builder.Services.AddHostedService<QueuedHostedService>();
 
 // Configure and register the DbContext for Entity Framework Core with SQL Server
-// var connectionString = builder.Configuration["Local:ConnectionString"];
-var connectionString = builder.Configuration["AzureSql:ConnectionString"];
+var connectionString = builder.Configuration["Local:ConnectionString"];
+// var connectionString = builder.Configuration["AzureSql:ConnectionString"];
 if (string.IsNullOrEmpty(connectionString))
 {
     // Assuming Azure SQL is available, even for dev, as provisioned
@@ -51,6 +103,11 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+// Add CORS middleware to the request pipeline
+// This ensures that CORS headers are added to the response
+// This should be called just before app.MapControllers()
+app.UseCors(CORSPolicyAllowSpecificOrigins); // Use the CORS policy defined above
 
 app.MapControllers();
 

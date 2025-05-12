@@ -255,8 +255,7 @@ public class ImagesController : ControllerBase
                     analysisResult = new AnalysisResult { ErrorMessage = "Could not parse stored error details." };
                 }
             }
-
-
+            
             var response = new AnalysisStatusResponse
             {
                 JobId = job.Id,

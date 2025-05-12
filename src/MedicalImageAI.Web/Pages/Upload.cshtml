@@ -25,41 +25,119 @@
     </div>
 </div>
 
-@if (Model.PageResponse != null)
-{
-    <hr class="mt-4 mb-4" />
-    <div class="row">
-        <div class="col-md-8">
-            <h2>Upload Status</h2>
-            <div class="alert alert-success" role="alert">
+@* Area to display initial acceptance and then polled results *@
+<div class="row mt-4">
+    <div class="col-md-8">
+        @if (Model.PageResponse != null) // After initial POST and 202 Accepted
+        {
+            <div id="uploadConfirmation" class="alert alert-success" role="alert">
                 <h4 class="alert-heading">Request Accepted!</h4>
                 <p>@Model.PageResponse.Message</p>
-                <hr>
                 <p class="mb-0">Server Filename: <strong>@Model.PageResponse.FileName</strong></p>
-                @* We might choose not to display the full blob URI to the end-user directly for simplicity
-                   or if it contains sensitive info like SAS tokens (though our base URI doesn't) 
-                <p class="mb-0">Storage URI: @Model.PageResponse.BlobUri</p> 
-                *@
-                <p class="mt-2">The analysis is now running in the background. A future version of this page will allow you to check the status and view results.</p>
+                <p class="mt-2">Attempting to fetch analysis results...</p>
             </div>
-        </div>
-    </div>
-}
+        }
 
-@if (!string.IsNullOrEmpty(Model.ErrorMessage))
-{
-    <hr class="mt-4 mb-4" />
-    <div class="row">
-        <div class="col-md-8">
-            <h2>Error</h2>
-            <div class="alert alert-danger" role="alert">
+        @* This div will be updated by JavaScript polling *@
+        <div id="analysisResultsArea" class="mt-3"></div>
+
+        @if (!string.IsNullOrEmpty(Model.ErrorMessage))
+        {
+            <div id="uploadError" class="alert alert-danger mt-3" role="alert">
                 <h4 class="alert-heading">An error occurred:</h4>
                 <p>@Model.ErrorMessage</p>
             </div>
-        </div>
+        }
     </div>
-}
+</div>
 
 @section Scripts {
     @{await Html.RenderPartialAsync("_ValidationScriptsPartial");}
+
+    @* Add JavaScript for polling if a JobId is available *@
+    @if (Model.PageResponse?.JobId != null && Model.PageResponse.JobId != Guid.Empty)
+    {
+        <script>
+            (function () {
+                const jobId = "@Model.PageResponse.JobId";
+                // It's safer to get the base URL from configuration rather than hardcoding
+                // Assuming your PageModel can expose this, or you inject IConfiguration into the view
+                const apiBaseUrl = "@Model.Configuration["ApiSettings:BaseUrl"]"; // Ensure Configuration is injected into UploadModel and accessible
+                const statusUrl = `${apiBaseUrl.replace(/\/$/, "")}/api/images/${jobId}/analysis`;
+                const resultsArea = document.getElementById("analysisResultsArea");
+                let pollingInterval = 3000; // Poll every 3 seconds
+                let maxPollAttempts = 20; // Stop after 20 attempts (1 minute)
+                let pollAttempts = 0;
+
+                function displayResults(data) {
+                    resultsArea.innerHTML = ''; // Clear previous messages
+                    let content = `<h5>Analysis Complete (Job ID: ${data.jobId})</h5>`;
+                    content += `<p><strong>Status:</strong> <span class="badge bg-${data.status === 'Completed' ? 'success' : 'danger'}">${data.status}</span></p>`;
+                    
+                    if (data.analysis && data.analysis.success && data.analysis.predictions && data.analysis.predictions.length > 0) {
+                        content += '<p><strong>Predictions:</strong></p><ul>';
+                        data.analysis.predictions.forEach(pred => {
+                            content += `<li>${pred.tagName}: ${pred.probability.toFixed(1)}%</li>`;
+                        });
+                        content += '</ul>';
+                    } else if (data.analysis && !data.analysis.success && data.analysis.errorMessage) {
+                        content += `<p class="text-danger"><strong>Analysis Error:</strong> ${data.analysis.errorMessage}</p>`;
+                    } else if (data.status === 'Failed' && data.analysis && data.analysis.errorMessage) {
+                        content += `<p class="text-danger"><strong>Analysis Failed:</strong> ${data.analysis.errorMessage}</p>`;
+                    } else if (data.status === 'Failed') {
+                         content += `<p class="text-danger"><strong>Analysis Failed:</strong> No detailed error message available.</p>`;
+                    }
+                     else {
+                        content += '<p>No predictions available or analysis did not complete successfully.</p>';
+                    }
+                    resultsArea.innerHTML = content;
+                }
+
+                function pollForStatus() {
+                    pollAttempts++;
+                    if (pollAttempts > maxPollAttempts) {
+                        resultsArea.innerHTML = '<p class="text-warning">Stopped polling for results after 1 minute. Please check back later or try again.</p>';
+                        return;
+                    }
+
+                    resultsArea.innerHTML = `<p>Checking analysis status (attempt ${pollAttempts})... <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span></p>`;
+                    
+                    fetch(statusUrl)
+                        .then(response => {
+                            if (!response.ok) {
+                                throw new Error(`Network response was not ok: ${response.statusText}`);
+                            }
+                            return response.json();
+                        })
+                        .then(data => {
+                            if (data.status === "Completed" || data.status === "Failed" || data.status.startsWith("Error")) {
+                                displayResults(data);
+                                // Stop polling
+                            } else if (data.status === "Processing" || data.status === "Queued") {
+                                resultsArea.innerHTML = `<p>Status: ${data.status}. Will check again in ${pollingInterval / 1000} seconds... <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span></p>`;
+                                setTimeout(pollForStatus, pollingInterval);
+                            } else {
+                                // Unexpected status
+                                resultsArea.innerHTML = `<p class="text-warning">Received unexpected status: ${data.status}. Stopping polling.</p>`;
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error fetching analysis status:', error);
+                            resultsArea.innerHTML = `<p class="text-danger">Error fetching analysis status: ${error.message}. Please try refreshing.</p>`;
+                            // Optionally stop polling on error or retry a few times
+                        });
+                }
+
+                // Start polling immediately after the initial 202 Accepted response is handled by the server-side Razor Page
+                if (jobId && apiBaseUrl) {
+                    console.log("Starting polling for Job ID:", jobId, "at URL:", statusUrl);
+                    pollForStatus();
+                } else {
+                    if (!jobId) console.error("JobId not available to start polling.");
+                    if (!apiBaseUrl) console.error("API Base URL not available to start polling.");
+                    resultsArea.innerHTML = "<p class='text-danger'>Could not start polling: Configuration missing.</p>"
+                }
+            })();
+        </script>
+    }
 }

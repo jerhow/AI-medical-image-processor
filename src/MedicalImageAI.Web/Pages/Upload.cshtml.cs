@@ -9,7 +9,7 @@ namespace MedicalImageAI.Web.Pages;
 public class UploadModel : PageModel
 {
     private readonly IHttpClientFactory _httpClientFactory;
-    private readonly IConfiguration _configuration;
+    public readonly IConfiguration Configuration;
     private readonly ILogger<UploadModel> _logger;
 
     [BindProperty]
@@ -22,8 +22,8 @@ public class UploadModel : PageModel
 
     public UploadModel(IHttpClientFactory httpClientFactory, IConfiguration configuration, ILogger<UploadModel> logger)
     {
+        Configuration = configuration;
         _httpClientFactory = httpClientFactory;
-        _configuration = configuration;
         _logger = logger;
     }
 
@@ -67,7 +67,7 @@ public class UploadModel : PageModel
             return Page();
         }
 
-        var apiBaseUrl = _configuration["ApiSettings:BaseUrl"];
+        var apiBaseUrl = Configuration["ApiSettings:BaseUrl"];
         if (string.IsNullOrEmpty(apiBaseUrl))
         {
             ErrorMessage = "API base URL is not configured. Please check application settings.";
