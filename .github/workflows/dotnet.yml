@@ -1,0 +1,64 @@
+# Optional: Give your workflow a name for display in the Actions tab
+name: AIMIP CI Build # Build and Publish .NET Artifacts so that they can be picked up for deployment
+
+# 1. Define Triggers: When this workflow should run
+on:
+  push: # Run on pushes to these branches
+    branches: [ main ] # Or your primary branch name, e.g., master
+  pull_request: # Also run on pull requests targeting these branches
+    branches: [ main ]
+  workflow_dispatch: # Allows manual triggering from the Actions tab
+
+# 2. Define Jobs: A workflow run is made up of one or more jobs
+jobs:
+  build: # Name of your job (can be anything descriptive)
+    runs-on: ubuntu-latest # Specify the type of runner (OS)
+
+    # 3. Define Steps: A sequence of tasks executed in the job
+    steps:
+    # Step 1: Check out your repository code so the workflow can access it
+    - name: Checkout code
+      uses: actions/checkout@v4 # Uses a pre-built action
+
+    # Step 2: Set up the .NET SDK (specify your .NET version)
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x' # Use your project's .NET version
+
+    # Step 3: Restore dependencies for the entire solution
+    - name: Restore dependencies
+      run: dotnet restore MedicalImageAI.sln # Assuming solution file is at the root
+
+    # Step 4: Build the entire solution (both API and Web projects)
+    #         Specify Release configuration for builds intended for deployment
+    - name: Build solution
+      run: dotnet build MedicalImageAI.sln --configuration Release --no-restore
+
+    # Step 4a: Run tests (if you have them - we'll skip this for now but good to add later)
+    # - name: Test
+    #   run: dotnet test --no-build --configuration Release
+
+    # --- We will add steps to PUBLISH ARTIFACTS for API and Web App next ---
+
+    # Step 5: Publish the API project
+    - name: Publish API
+      run: dotnet publish src/MedicalImageAI.Api/MedicalImageAI.Api.csproj --configuration Release --output ./api-publish --no-build
+
+    # Step 6: Upload API Artifact
+    - name: Upload API Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: api-artifact # Name of the artifact in GitHub Actions
+        path: ./api-publish # Path to the folder to upload
+
+    # Step 7: Publish the Web App project
+    - name: Publish Web App
+      run: dotnet publish src/MedicalImageAI.Web/MedicalImageAI.Web.csproj --configuration Release --output ./web-publish --no-build
+
+    # Step 8: Upload Web App Artifact
+    - name: Upload Web App Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: web-artifact # Name of the artifact in GitHub Actions
+        path: ./web-publish # Path to the folder to upload
