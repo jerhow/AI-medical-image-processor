@@ -84,8 +84,7 @@ builder.Services.AddSingleton<IBackgroundQueue<Func<IServiceProvider, Cancellati
 builder.Services.AddHostedService<QueuedHostedService>();
 
 // Configure and register the DbContext for Entity Framework Core with SQL Server
-var connectionString = builder.Configuration["Local:ConnectionString"];
-// var connectionString = builder.Configuration["AzureSql:ConnectionString"];
+var connectionString = builder.Configuration["AzureSql:ConnectionString"];
 if (string.IsNullOrEmpty(connectionString))
 {
     // Assuming Azure SQL is available, even for dev, as provisioned
