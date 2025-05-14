@@ -8,9 +8,17 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Content Include="wwwroot/lib/bootstrap/dist/**" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="wwwroot/lib/jquery/dist/**" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="wwwroot/lib/jquery-validation/dist/**" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="wwwroot/lib/bootstrap/dist/**/*.css" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="wwwroot/lib/bootstrap/dist/**/*.js" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="wwwroot/lib/bootstrap/dist/**/*.map" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="wwwroot/lib/bootstrap/dist/**/*.woff" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="wwwroot/lib/bootstrap/dist/**/*.woff2" CopyToPublishDirectory="PreserveNewest" />
+    
+    <Content Include="wwwroot/lib/jquery/dist/**/*.js" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="wwwroot/lib/jquery/dist/**/*.map" CopyToPublishDirectory="PreserveNewest" />
+    
+    <Content Include="wwwroot/lib/jquery-validation/dist/**/*.js" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="wwwroot/lib/jquery-validation/dist/**/*.map" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
