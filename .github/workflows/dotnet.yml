@@ -68,6 +68,10 @@ jobs:
     runs-on: ubuntu-latest
     environment: Production # Optional: You can define environments in GitHub for approval rules, etc.
     name: Deploy API to Azure App Service
+    permissions:
+      id-token: write   # Required to allow the job to request an OIDC token
+      contents: read    # Usually needed if your job checks out code or reads repo content 
+                        # (download-artifact should be fine without this for artifacts from same workflow)
     steps:
       - name: Azure Login
         uses: azure/login@v2 # Use the latest version of azure/login
@@ -94,6 +98,9 @@ jobs:
     runs-on: ubuntu-latest
     environment: Production # Optional
     name: Deploy Web App to Azure App Service
+    permissions:
+      id-token: write   # Required to allow the job to request an OIDC token
+      contents: read
     steps:
       - name: Azure Login
         uses: azure/login@v2
