@@ -62,3 +62,55 @@ jobs:
       with:
         name: web-artifact # Name of the artifact in GitHub Actions
         path: ./web-publish # Path to the folder to upload
+
+  deploy_api:
+    needs: build # This job depends on the 'build' job completing successfully
+    runs-on: ubuntu-latest
+    environment: Production # Optional: You can define environments in GitHub for approval rules, etc.
+    name: Deploy API to Azure App Service
+    steps:
+      - name: Azure Login
+        uses: azure/login@v2 # Use the latest version of azure/login
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Download API Artifact
+        uses: actions/download-artifact@v4 # Use the latest version
+        with:
+          name: api-artifact # Artifact name from the build job
+          path: ./api-deploy # Download to this path on the runner
+
+      - name: Deploy API to Azure App Service
+        uses: azure/webapps-deploy@v3 # Use the latest version
+        with:
+          app-name: 'aimip-api' # API App Service name
+          package: './api-deploy' # Path to the folder or zip file downloaded
+          # slot-name: 'staging' # Optional: if you use deployment slots
+
+  deploy_web:
+    needs: build # This job also depends on the 'build' job
+    runs-on: ubuntu-latest
+    environment: Production # Optional
+    name: Deploy Web App to Azure App Service
+    steps:
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Download Web Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: web-artifact # Artifact name from the build job
+          path: ./web-deploy
+
+      - name: Deploy Web App to Azure App Service
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: 'aimip-web' # Web App Service name
+          package: './web-deploy'
+          # slot-name: 'staging'
