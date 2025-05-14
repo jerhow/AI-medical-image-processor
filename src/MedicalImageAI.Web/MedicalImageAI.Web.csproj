@@ -8,9 +8,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Content Include="wwwroot\lib\bootstrap\dist**" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="wwwroot\lib\jquery\dist\**" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="wwwroot\lib\jquery-validation\dist\**" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="wwwroot/lib/bootstrap/dist/**" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="wwwroot/lib/jquery/dist/**" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="wwwroot/lib/jquery-validation/dist/**" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
