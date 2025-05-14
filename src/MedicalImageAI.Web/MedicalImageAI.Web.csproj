@@ -7,4 +7,11 @@
     <UserSecretsId>5a9a0c65-0e6b-4e25-8458-8952bed3ddc9</UserSecretsId>
   </PropertyGroup>
 
+  <ItemGroup>
+    <Content Include="wwwroot\lib\bootstrap\**" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="wwwroot\lib\jquery\**" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="wwwroot\lib\jquery-validation\**" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="wwwroot\lib\jquery-validation-unobtrusive\**" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
