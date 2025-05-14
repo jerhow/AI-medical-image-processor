@@ -484,8 +484,8 @@ $RECYCLE.BIN/
 *.swp
 
 ## ASP.NET Publish Output
-wwwroot/dist/
-dist/
+# wwwroot/dist/
+# dist/ # This was keeping certain static web files from being published
 .bundle/
 **/publish/
 

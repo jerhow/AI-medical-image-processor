@@ -35,28 +35,7 @@ jobs:
     - name: Build solution
       run: dotnet build MedicalImageAI.sln --configuration Release --no-restore
 
-    # --- DIAGNOSTICS FOR WEB APP ---
-    - name: List Web App wwwroot/lib before publish
-      run: |
-        echo "Listing contents of src/MedicalImageAI.Web/wwwroot/lib/ (recursive):"
-        ls -R src/MedicalImageAI.Web/wwwroot/lib/
-        echo "--- End of wwwroot/lib listing ---"
-
-    - name: Publish Web App with Diagnostic Verbosity
-      # We add -v:diag for detailed MSBuild logging
-      run: dotnet publish src/MedicalImageAI.Web/MedicalImageAI.Web.csproj --configuration Release --output ./web-publish --no-build -v:diag
-
-    - name: List web-publish output before artifact upload
-      run: |
-        echo "Listing contents of ./web-publish/ (recursive):"
-        ls -R ./web-publish/
-        echo "--- End of web-publish listing ---"
-        echo "Specifically listing ./web-publish/wwwroot/lib/ (recursive):"
-        if [ -d "./web-publish/wwwroot/lib" ]; then ls -R ./web-publish/wwwroot/lib/; else echo "./web-publish/wwwroot/lib/ not found"; fi
-        echo "--- End of web-publish/wwwroot/lib listing ---"
-    # --- END DIAGNOSTICS FOR WEB APP ---
-
-    # Step 4a: Run tests (if you have them - we'll skip this for now but good to add later)
+    # Step 4a: Run tests (when we have them)
     # - name: Test
     #   run: dotnet test --no-build --configuration Release
 

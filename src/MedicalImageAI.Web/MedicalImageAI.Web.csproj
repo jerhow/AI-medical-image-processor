@@ -7,18 +7,4 @@
     <UserSecretsId>5a9a0c65-0e6b-4e25-8458-8952bed3ddc9</UserSecretsId>
   </PropertyGroup>
 
-  <ItemGroup>
-    <Content Include="wwwroot/lib/bootstrap/dist/**/*.css" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="wwwroot/lib/bootstrap/dist/**/*.js" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="wwwroot/lib/bootstrap/dist/**/*.map" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="wwwroot/lib/bootstrap/dist/**/*.woff" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="wwwroot/lib/bootstrap/dist/**/*.woff2" CopyToPublishDirectory="PreserveNewest" />
-    
-    <Content Include="wwwroot/lib/jquery/dist/**/*.js" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="wwwroot/lib/jquery/dist/**/*.map" CopyToPublishDirectory="PreserveNewest" />
-    
-    <Content Include="wwwroot/lib/jquery-validation/dist/**/*.js" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="wwwroot/lib/jquery-validation/dist/**/*.map" CopyToPublishDirectory="PreserveNewest" />
-  </ItemGroup>
-
 </Project>
