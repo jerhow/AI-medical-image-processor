@@ -263,7 +263,7 @@ public class ImagesController : ControllerBase
                 UploadTimestamp = job.UploadTimestamp,
                 ProcessingStartedTimestamp = job.ProcessingStartedTimestamp,
                 CompletedTimestamp = job.CompletedTimestamp,
-                Analysis = analysisResult, // Will be null if not completed or if deserialization fails
+                Analysis = analysisResult!, // Will be null if not completed or if deserialization fails
                 OriginalFileName = job.OriginalFileName,
                 BlobUri = job.BlobUri
             };
