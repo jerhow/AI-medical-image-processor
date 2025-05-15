@@ -60,10 +60,10 @@
         <script>
             (function () {
                 const jobId = "@Model.PageResponse.JobId";
-                // It's safer to get the base URL from configuration rather than hardcoding
-                // Assuming your PageModel can expose this, or you inject IConfiguration into the view
+                @* In this case, PageModel exposes Configuration as a public property.
+                   Alternatively, we could have injected IConfiguration into the view. *@
                 const apiBaseUrl = "@Model.Configuration["ApiSettings:BaseUrl"]"; // Ensure Configuration is injected into UploadModel and accessible
-                const statusUrl = `${apiBaseUrl.replace(/\/$/, "")}/api/images/${jobId}/analysis`;
+                const statusUrl = `/Upload?handler=AnalysisStatus&jobId=${jobId}`;
                 const resultsArea = document.getElementById("analysisResultsArea");
                 let pollingInterval = 3000; // Poll every 3 seconds
                 let maxPollAttempts = 20; // Stop after 20 attempts (1 minute)

@@ -81,7 +81,7 @@ public class UploadModel : PageModel
         try
         {
             var client = _httpClientFactory.CreateClient("ApiClient"); // Named client is not yet configured in Program.cs, so we get the default one for now
-            
+
             // --- Add API Key to the request headers ---
             var apiKey = Configuration["ApiClientSettings:ApiKey"];
             if (string.IsNullOrEmpty(apiKey))
@@ -130,5 +130,72 @@ public class UploadModel : PageModel
         }
 
         return Page();
+    }
+    
+    public async Task<JsonResult> OnGetAnalysisStatusAsync(Guid jobId)
+    {
+        _logger.LogInformation("Proxying request for analysis status of JobId: {JobId}", jobId);
+
+        var apiBaseUrl = Configuration["ApiSettings:BaseUrl"]; 
+        var apiKey = Configuration["ApiClientSettings:ApiKey"];
+
+        if (string.IsNullOrEmpty(apiBaseUrl))
+        {
+            _logger.LogError("API Base URL (ApiSettings:BaseUrl) is not configured in the Web App.");
+            return new JsonResult(new { error = "Server configuration error: API endpoint not specified." }) 
+                { StatusCode = StatusCodes.Status500InternalServerError };
+        }
+        if (string.IsNullOrEmpty(apiKey))
+        {
+            _logger.LogError("API Key (ApiClientSettings:ApiKey) is not configured in the Web App.");
+            return new JsonResult(new { error = "Server configuration error: API key for backend service is missing." }) 
+                { StatusCode = StatusCodes.Status500InternalServerError };
+        }
+
+        var actualApiStatusEndpoint = $"{apiBaseUrl.TrimEnd('/')}/api/images/{jobId}/analysis";
+        _logger.LogInformation("Proxy target URL: {TargetUrl}", actualApiStatusEndpoint);
+
+        try
+        {
+            var client = _httpClientFactory.CreateClient("ApiClient");
+            
+            client.DefaultRequestHeaders.Clear(); 
+            client.DefaultRequestHeaders.Add("X-API-Key", apiKey);
+            client.DefaultRequestHeaders.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+
+            HttpResponseMessage response = await client.GetAsync(actualApiStatusEndpoint);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var jsonResponseString = await response.Content.ReadAsStringAsync();
+                _logger.LogInformation("Successfully proxied status request for JobId {JobId}. API Payload received.", jobId);
+                
+                // Return a JsonResult, which will re-serialize the string.
+                // We could also have sent the raw string with ContentResult.
+                var apiData = JsonSerializer.Deserialize<object>(jsonResponseString, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                return new JsonResult(apiData);
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                _logger.LogError("Proxied API request for JobId {JobId} failed. Status: {StatusCode}, Details: {ErrorContent}",
+                    jobId, response.StatusCode, errorContent);
+                // Forward a similar error structure
+                return new JsonResult(new { error = $"API returned error: {response.StatusCode}", details = errorContent }) 
+                    { StatusCode = (int)response.StatusCode };
+            }
+        }
+        catch (HttpRequestException httpEx)
+        {
+            _logger.LogError(httpEx, "Network error proxying API request for JobId {JobId} to {StatusEndpoint}", jobId, actualApiStatusEndpoint);
+            return new JsonResult(new { error = "Network error during proxy to backend API." }) 
+                { StatusCode = StatusCodes.Status503ServiceUnavailable };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error proxying API request for JobId {JobId}", jobId);
+            return new JsonResult(new { error = "Unexpected server error while proxying request." }) 
+                { StatusCode = StatusCodes.Status500InternalServerError };
+        }
     }
 }
