@@ -81,6 +81,16 @@ public class UploadModel : PageModel
         try
         {
             var client = _httpClientFactory.CreateClient("ApiClient"); // Named client is not yet configured in Program.cs, so we get the default one for now
+            
+            // --- Add API Key to the request headers ---
+            var apiKey = Configuration["ApiClientSettings:ApiKey"];
+            if (string.IsNullOrEmpty(apiKey))
+            {
+                _logger.LogError("API Key for ApiClientSettings:ApiKey is not configured in the Web App.");
+                ErrorMessage = "Critical configuration error: API Key for backend service is missing.";
+                return Page();
+            }
+            client.DefaultRequestHeaders.Add("X-API-Key", apiKey);
 
             using (var content = new MultipartFormDataContent())
             using (var fileStream = UploadedImage.OpenReadStream())

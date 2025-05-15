@@ -4,6 +4,7 @@ using MedicalImageAI.Api.Services;
 using MedicalImageAI.Api.BackgroundServices;
 using MedicalImageAI.Api.BackgroundServices.Interfaces;
 using MedicalImageAI.Api.Data;
+using MedicalImageAI.Api.Middleware;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -107,6 +108,8 @@ app.UseHttpsRedirection();
 // This ensures that CORS headers are added to the response
 // This should be called just before app.MapControllers()
 app.UseCors(CORSPolicyAllowSpecificOrigins); // Use the CORS policy defined above
+
+app.UseMiddleware<ApiKeyMiddleware>();
 
 app.MapControllers();
 
