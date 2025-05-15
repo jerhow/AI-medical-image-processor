@@ -36,6 +36,7 @@ public class ImagesController : ControllerBase
     public IActionResult Ping()
     {
         _logger?.LogInformation("Ping endpoint hit!");
+        // throw new InvalidOperationException("This is a test unhandled exception!"); // Temporary for testing
         return Ok("Pong from API");
     }
 

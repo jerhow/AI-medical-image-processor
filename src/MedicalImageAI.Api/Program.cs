@@ -104,10 +104,11 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-// Add CORS middleware to the request pipeline
-// This ensures that CORS headers are added to the response
-// This should be called just before app.MapControllers()
+app.UseRouting();
+
 app.UseCors(CORSPolicyAllowSpecificOrigins); // Use the CORS policy defined above
+
+app.UseMiddleware<GlobalExceptionHandlerMiddleware>();
 
 app.UseMiddleware<ApiKeyMiddleware>();
 

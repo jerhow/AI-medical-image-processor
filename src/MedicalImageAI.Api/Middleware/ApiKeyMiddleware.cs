@@ -1,8 +1,3 @@
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection; // For IServiceScopeFactory if needed for complex checks
-using System.Threading.Tasks;
-
 namespace MedicalImageAI.Api.Middleware;
 
 public class ApiKeyMiddleware
