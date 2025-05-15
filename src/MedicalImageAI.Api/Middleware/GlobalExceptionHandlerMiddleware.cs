@@ -18,6 +18,16 @@ public class GlobalExceptionHandlerMiddleware
         _env = env;
     }
 
+    /// <summary>
+    /// Middleware to handle exceptions globally.
+    /// This middleware catches unhandled exceptions thrown by the application,
+    /// logs the error, and returns a standardized JSON response to the client.
+    /// The response includes a status code, a message, and a trace ID for tracking.
+    /// In development mode, it also includes detailed error information.
+    /// In production mode, it provides a generic error message to avoid exposing sensitive information.
+    /// </summary>
+    /// <param name="context"></param>
+    /// <returns></returns>
     public async Task InvokeAsync(HttpContext context)
     {
         try

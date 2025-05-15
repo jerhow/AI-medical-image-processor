@@ -12,6 +12,15 @@ public class ApiKeyMiddleware
         _configuration = configuration;
     }
 
+    /// <summary>
+    /// Middleware to validate API key from the request headers.
+    /// The API key is expected to be provided in the request headers with the name "X-API-Key".
+    /// If the API key is missing or invalid, a 401 Unauthorized response is returned.
+    /// If the API key is valid, the request is passed to the next middleware in the pipeline.
+    /// This middleware allows access to the Swagger UI and the Ping endpoint without an API key.
+    /// </summary>
+    /// <param name="context"></param>
+    /// <returns></returns>
     public async Task InvokeAsync(HttpContext context)
     {
         // Allow Swagger to be accessed without an API key for development/testing
