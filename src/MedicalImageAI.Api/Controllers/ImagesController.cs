@@ -5,7 +5,10 @@ using MedicalImageAI.Api.BackgroundServices.Interfaces;
 using MedicalImageAI.Api.Data;
 using MedicalImageAI.Api.Entities;
 using System.Text.Json;
-using Microsoft.EntityFrameworkCore; // For ToListAsync, FirstOrDefaultAsync etc. if needed
+using Microsoft.EntityFrameworkCore;
+using CsvHelper;
+using System.Text;
+using System.Globalization;
 
 namespace MedicalImageAI.Api.Controllers;
 
@@ -274,6 +277,117 @@ public class ImagesController : ControllerBase
         {
             _logger.LogError(ex, "Error retrieving analysis status for JobId {JobId}", jobId);
             return StatusCode(StatusCodes.Status500InternalServerError, "An unexpected error occurred while retrieving job status.");
+        }
+    }
+
+    /// <summary>
+    /// Generates a CSV report of all image analysis jobs.
+    /// The report is generated in memory and returned as a downloadable CSV file.
+    /// If no jobs are found, an empty CSV file is returned with a header row.
+    /// The CSV file is named with a timestamp to ensure uniqueness.
+    /// </summary>
+    /// <returns></returns>
+    [HttpGet("report/csv", Name = "GetAnalysisReportCsv")]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> GetAnalysisReportCsvAsync()
+    {
+        _logger.LogInformation("Request received for CSV analysis report.");
+
+        try
+        {
+            // --- 1. Fetch data from the database
+            var jobs = await _dbContext.ImageAnalysisJobs.OrderByDescending(j => j.UploadTimestamp).ToListAsync(); // Order by most recent
+
+            if (!jobs.Any())
+            {
+                // Optional: Return an empty CSV or a different response if no data
+                _logger.LogInformation("No jobs found to include in the report.");
+                // Return an empty CSV file
+                using (var memoryStream = new MemoryStream())
+                using (var writer = new StreamWriter(memoryStream, Encoding.UTF8)) // Use UTF8 for broader character support
+                using (var csv = new CsvWriter(writer, CultureInfo.InvariantCulture))
+                {
+                    csv.WriteHeader<ImageAnalysisReportEntry>(); // Write header even if no records
+                    writer.Flush(); // Ensure writer is flushed before reading stream
+                    return File(memoryStream.ToArray(), "text/csv", $"empty_analysis_report_{DateTime.UtcNow:yyyyMMddHHmmss}.csv");
+                }
+            }
+
+            // --- 2. Transform data into the CSV record model (ImageAnalysisReportEntry)
+            var reportEntries = new List<ImageAnalysisReportEntry>();
+            foreach (var job in jobs)
+            {
+                AnalysisResult? analysisResult = null;
+                if (!string.IsNullOrEmpty(job.AnalysisResultJson))
+                {
+                    try
+                    {
+                        analysisResult = JsonSerializer.Deserialize<AnalysisResult>(
+                            job.AnalysisResultJson,
+                            new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
+                        );
+                    }
+                    catch (JsonException jsonEx)
+                    {
+                        _logger.LogWarning(jsonEx, "Failed to deserialize AnalysisResultJson for JobId {JobId} in CSV report.", job.Id);
+                    }
+                }
+
+                var entry = new ImageAnalysisReportEntry
+                {
+                    JobId = job.Id,
+                    OriginalFileName = job.OriginalFileName,
+                    UploadTimestamp = job.UploadTimestamp,
+                    Status = job.Status,
+                    ProcessingStartedTimestamp = job.ProcessingStartedTimestamp,
+                    CompletedTimestamp = job.CompletedTimestamp,
+                    BlobUri = job.BlobUri,
+
+                    TopPredictionTag = analysisResult?.Success == true && analysisResult.Predictions.Any() 
+                                       ? analysisResult.Predictions.First().TagName 
+                                       : "N/A",
+
+                    TopPredictionProbability = analysisResult?.Success == true && analysisResult.Predictions.Any() 
+                                               ? Math.Round(analysisResult.Predictions.First().Probability, 2) // Round for display
+                                               : 0.0,
+
+                    AllPredictionsSummary = analysisResult?.Success == true && analysisResult.Predictions.Any()
+                                            ? string.Join("; ", analysisResult.Predictions.Select(p => $"{p.TagName}: {Math.Round(p.Probability,1)}%"))
+                                            : (analysisResult?.ErrorMessage ?? (job.Status == "Failed" ? "Failed" : "N/A")),
+
+                    ErrorMessage = analysisResult?.Success == false
+                                   ? analysisResult.ErrorMessage 
+                                   : (job.Status == "Failed" && string.IsNullOrEmpty(analysisResult?.ErrorMessage) ? "Processing Failed" : string.Empty)
+                };
+                reportEntries.Add(entry);
+            }
+
+            // --- 3. Use CsvHelper to write to a memory stream
+            using (var memoryStream = new MemoryStream())
+            using (var writer = new StreamWriter(memoryStream, Encoding.UTF8))
+            using (var csv = new CsvWriter(writer, CultureInfo.InvariantCulture)) // CultureInfo.InvariantCulture is good for CSVs
+            {
+                // Optional: Configure CsvHelper if needed (e.g., custom headers, delimiters)
+                // var csvConfig = new CsvConfiguration(CultureInfo.InvariantCulture) { /* ... options ... */ };
+                // var csv = new CsvWriter(writer, csvConfig);
+
+                csv.WriteHeader<ImageAnalysisReportEntry>(); // Writes the header row based on property names
+                await csv.NextRecordAsync(); // Moves to the next line
+                await csv.WriteRecordsAsync(reportEntries); // Writes all the data records
+
+                await writer.FlushAsync(); // Ensure all data is written to the stream
+                memoryStream.Position = 0; // Reset stream position for reading
+
+                var fileName = $"image_analysis_report_{DateTime.UtcNow:yyyyMMddHHmmss}.csv";
+                _logger.LogInformation("CSV report generated successfully with {RecordCount} records. Filename: {FileName}", reportEntries.Count, fileName);
+                return File(memoryStream.ToArray(), "text/csv", fileName);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error generating CSV analysis report.");
+            return StatusCode(StatusCodes.Status500InternalServerError, "An error occurred while generating the report.");
         }
     }
 
