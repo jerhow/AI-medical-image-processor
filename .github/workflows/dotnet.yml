@@ -35,11 +35,11 @@ jobs:
     - name: Build solution
       run: dotnet build MedicalImageAI.sln --configuration Release --no-restore
 
-    # Step 4a: Run tests (when we have them)
-    # - name: Test
-    #   run: dotnet test --no-build --configuration Release
+    # Step 4a: Run tests
+    - name: Test
+      run: dotnet test --no-build --configuration Release
 
-    # --- We will add steps to PUBLISH ARTIFACTS for API and Web App next ---
+    # --- PUBLISH ARTIFACTS for API and Web App next ---
 
     # Step 5: Publish the API project
     - name: Publish API
