@@ -1,16 +1,11 @@
-using Xunit;
-using Moq;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging;
+using Azure;
+using Azure.Storage;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
-using MedicalImageAI.Api.Services; // Your service namespace
-using System;
-using System.IO;
-using System.Threading.Tasks;
-using System.Threading; // Required for CancellationToken
-using Azure; // Required for ETag and Response
-using Azure.Storage;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using MedicalImageAI.Api.Services;
+using Moq;
 
 namespace MedicalImageAI.Api.Tests;
 
@@ -23,14 +18,13 @@ public class BlobStorageServiceTests
     private readonly Mock<ILogger<BlobStorageService>> _mockLogger;
     private readonly BlobStorageService _blobStorageService;
 
-    // Test constants
     private const string TestContainerName = "test-images";
     private const string TestFileName = "testimage.png";
     private const string TestContentType = "image/png";
 
     public BlobStorageServiceTests()
     {
-        // Mock IConfiguration to return our test container name
+        // Mock IConfiguration to return the test container name
         _mockConfiguration = new Mock<IConfiguration>();
         _mockConfiguration.Setup(config => config["BlobStorage:ContainerName"])
                             .Returns(TestContainerName);
@@ -68,10 +62,20 @@ public class BlobStorageServiceTests
         );
     }
 
+    /// <summary>
+    /// Test to ensure that UploadImageAsync method correctly uploads an image to Azure Blob Storage.
+    /// - Verifies that the blob name is unique and follows the expected format.
+    /// - Checks that the blob URI is correctly formed.
+    /// - The test uses a mock stream to simulate the image upload process.
+    /// - Verifies that the correct methods are called on the mocked BlobServiceClient and BlobContainerClient.
+    /// - Also checks that the correct content type is set in the BlobHttpHeaders.
+    /// - Ensures that the blob name is a valid GUID and that the file extension matches the original file name.
+    /// </summary>
+    /// <returns></returns>
     [Fact]
     public async Task UploadImageAsync_ValidInput_ShouldUploadAndReturnCorrectInfo()
     {
-        // Arrange
+        // --- Arrange ---
         var testImageStream = new MemoryStream(new byte[] { 1, 2, 3 }); // Dummy stream
         string? capturedBlobName = null; // To capture the generated blob name
 
@@ -96,7 +100,7 @@ public class BlobStorageServiceTests
             contentHash: Array.Empty<byte>(),
             versionId: null,
             encryptionKeySha256: null,
-            encryptionScope: null, // <-- The missing 'encryptionScope' argument
+            encryptionScope: null,
             blobSequenceNumber: 0L   // Explicitly 0L for a long type
         );
 
@@ -115,7 +119,7 @@ public class BlobStorageServiceTests
 
         // 3. Setup the _mockBlobClient.UploadAsync method to return this actualAzureResponse
         _mockBlobClient.Setup(client => client.UploadAsync(
-            It.IsAny<Stream>(),                          // content (matches your 'stream')
+            It.IsAny<Stream>(),                          // content (matches the 'stream')
             It.IsAny<BlobHttpHeaders>(),                 // httpHeaders (matches your 'new BlobHttpHeaders { ... }')
             It.IsAny<IDictionary<string, string>>(),     // metadata (will match the default 'null')
             It.IsAny<BlobRequestConditions>(),           // conditions (will match the default 'null')
@@ -127,17 +131,17 @@ public class BlobStorageServiceTests
         .ReturnsAsync(actualAzureResponse); // 'actualAzureResponse' is your correctly created Azure.Response<BlobContentInfo>
 
 
-        // Act
+        // --- Act ---
         var (uniqueBlobName, blobUri) = await _blobStorageService.UploadImageAsync(testImageStream, TestFileName, TestContentType);
 
-        // Assert
-        // 1. Verify GetBlobContainerClient was called with the correct container name
+        // --- Assert ---
+        // --- Verify GetBlobContainerClient was called with the correct container name
         _mockBlobServiceClient.Verify(client => client.GetBlobContainerClient(TestContainerName), Times.Once);
 
-        // 2. Verify CreateIfNotExistsAsync was called on the container
+        // --- Verify CreateIfNotExistsAsync was called on the container
         _mockBlobContainerClient.Verify(client => client.CreateIfNotExistsAsync(PublicAccessType.None, null, null, It.IsAny<CancellationToken>()), Times.Once);
 
-        // 3. Verify GetBlobClient was called on the container (capturedBlobName should now be set)
+        // --- Verify GetBlobClient was called on the container (capturedBlobName should now be set)
         _mockBlobContainerClient.Verify(client => client.GetBlobClient(
             It.Is<string>(s =>
                 // Check if the string ends with the expected extension
@@ -153,19 +157,19 @@ public class BlobStorageServiceTests
         Assert.EndsWith($".{Path.GetExtension(TestFileName).TrimStart('.')}", uniqueBlobName); // Check extension
         Assert.Equal(uniqueBlobName, capturedBlobName); // uniqueBlobName from result should match captured one
 
-        // 4. Verify UploadAsync was called on the blob client
+        // --- Verify UploadAsync was called on the blob client
         _mockBlobClient.Verify(client => client.UploadAsync(
-            testImageStream,                         // 1. Verify it's the same stream instance
+            testImageStream,                                               // 1. Verify it's the same stream instance
             It.Is<BlobHttpHeaders>(h => h.ContentType == TestContentType), // 2. Verify ContentType in headers
-            It.IsAny<IDictionary<string, string>>(),     // 3. metadata (matches default null)
-            It.IsAny<BlobRequestConditions>(),           // 4. conditions (matches default null)
-            It.IsAny<IProgress<long>>(),                 // 5. progressHandler (matches default null)
-            It.IsAny<AccessTier?>(),                     // 6. accessTier (matches default null)
-            It.IsAny<StorageTransferOptions>(),          // 7. transferOptions (matches default struct)
-            It.IsAny<CancellationToken>()                // 8. cancellationToken (matches default struct)
+            It.IsAny<IDictionary<string, string>>(),                       // 3. metadata (matches default null)
+            It.IsAny<BlobRequestConditions>(),                             // 4. conditions (matches default null)
+            It.IsAny<IProgress<long>>(),                                   // 5. progressHandler (matches default null)
+            It.IsAny<AccessTier?>(),                                       // 6. accessTier (matches default null)
+            It.IsAny<StorageTransferOptions>(),                            // 7. transferOptions (matches default struct)
+            It.IsAny<CancellationToken>()                                  // 8. cancellationToken (matches default struct)
         ), Times.Once);
 
-        // 5. Assert the returned values
+        // --- Assert the returned values
         Assert.NotNull(uniqueBlobName);
         Assert.EndsWith($".{Path.GetExtension(TestFileName).TrimStart('.')}", uniqueBlobName);
         Assert.True(Guid.TryParse(Path.GetFileNameWithoutExtension(uniqueBlobName), out _)); // Check GUID part
