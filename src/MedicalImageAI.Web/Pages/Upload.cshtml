@@ -51,10 +51,20 @@
     </div>
 </div>
 
+@* In Pages/Upload.cshtml, where your CSV download button is *@
+<hr class="mt-5 mb-4" />
+<div class="row">
+    <div class="col-md-8">
+        <h3>Download Full Analysis Report</h3>
+        <p>Download a CSV file containing all image analysis job details and their primary results.</p>
+        <a asp-page="/Upload" asp-page-handler="DownloadCsvReport" class="btn btn-info">Download CSV Report</a>
+    </div>
+</div>
+
 @section Scripts {
     @{await Html.RenderPartialAsync("_ValidationScriptsPartial");}
 
-    @* Add JavaScript for polling if a JobId is available *@
+    @* Polling for whether a JobId is available, and fetching the results + updating the UI if so *@
     @if (Model.PageResponse?.JobId != null && Model.PageResponse.JobId != Guid.Empty)
     {
         <script>
