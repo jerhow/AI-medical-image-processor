@@ -22,7 +22,7 @@ public class ImagesController : ControllerBase
     private readonly ApplicationDbContext _dbContext;
 
     public ImagesController(
-        ILogger<ImagesController> logger, 
+        ILogger<ImagesController> logger,
         ICustomVisionService customVisionService,
         IBlobStorageService blobStorageService,
         ApplicationDbContext dbContext,
@@ -160,7 +160,7 @@ public class ImagesController : ControllerBase
                         {
                             jobToProcess = await scopedDbContext.ImageAnalysisJobs.FindAsync(new object[] { jobId }, ct);
                         }
-                        
+
                         if (jobToProcess != null)
                         {
                             jobToProcess.Status = finalStatus;
@@ -194,7 +194,7 @@ public class ImagesController : ControllerBase
                 FileName = uniqueBlobName, // The unique name given by the server
                 BlobUri = baseBlobUri    // The base URI of the blob
             };
-            
+
             // Optionally generate a status check URL when we have that endpoint ready:
             // string statusUrl = Url.ActionLink(nameof(GetAnalysisStatus), "Images", new { jobId = jobId });
             // return Accepted(statusUrl, acceptedResponse);
@@ -258,7 +258,7 @@ public class ImagesController : ControllerBase
                     analysisResult = new AnalysisResult { ErrorMessage = "Could not parse stored error details." };
                 }
             }
-            
+
             var response = new AnalysisStatusResponse
             {
                 JobId = job.Id,
@@ -318,49 +318,7 @@ public class ImagesController : ControllerBase
             var reportEntries = new List<ImageAnalysisReportEntry>();
             foreach (var job in jobs)
             {
-                AnalysisResult? analysisResult = null;
-                if (!string.IsNullOrEmpty(job.AnalysisResultJson))
-                {
-                    try
-                    {
-                        analysisResult = JsonSerializer.Deserialize<AnalysisResult>(
-                            job.AnalysisResultJson,
-                            new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
-                        );
-                    }
-                    catch (JsonException jsonEx)
-                    {
-                        _logger.LogWarning(jsonEx, "Failed to deserialize AnalysisResultJson for JobId {JobId} in CSV report.", job.Id);
-                    }
-                }
-
-                var entry = new ImageAnalysisReportEntry
-                {
-                    JobId = job.Id,
-                    OriginalFileName = job.OriginalFileName,
-                    UploadTimestamp = job.UploadTimestamp,
-                    Status = job.Status,
-                    ProcessingStartedTimestamp = job.ProcessingStartedTimestamp,
-                    CompletedTimestamp = job.CompletedTimestamp,
-                    BlobUri = job.BlobUri,
-
-                    TopPredictionTag = analysisResult?.Success == true && analysisResult.Predictions.Any() 
-                                       ? analysisResult.Predictions.First().TagName 
-                                       : "N/A",
-
-                    TopPredictionProbability = analysisResult?.Success == true && analysisResult.Predictions.Any() 
-                                               ? Math.Round(analysisResult.Predictions.First().Probability, 2) // Round for display
-                                               : 0.0,
-
-                    AllPredictionsSummary = analysisResult?.Success == true && analysisResult.Predictions.Any()
-                                            ? string.Join("; ", analysisResult.Predictions.Select(p => $"{p.TagName}: {Math.Round(p.Probability,1)}%"))
-                                            : (analysisResult?.ErrorMessage ?? (job.Status == "Failed" ? "Failed" : "N/A")),
-
-                    ErrorMessage = analysisResult?.Success == false
-                                   ? analysisResult.ErrorMessage 
-                                   : (job.Status == "Failed" && string.IsNullOrEmpty(analysisResult?.ErrorMessage) ? "Processing Failed" : string.Empty)
-                };
-                reportEntries.Add(entry);
+                reportEntries.Add(MapJobToReportEntry(job));
             }
 
             // --- 3. Use CsvHelper to write to a memory stream
@@ -430,5 +388,57 @@ public class ImagesController : ControllerBase
         }
 
         return true; // File is valid
+    }
+
+    /// <summary>
+    /// Maps an ImageAnalysisJob entity to an ImageAnalysisReportEntry for CSV reporting.
+    /// This includes deserializing the AnalysisResultJson into an AnalysisResult object.
+    /// </summary>
+    /// <param name="job"></param>
+    /// <returns></returns>
+    private ImageAnalysisReportEntry MapJobToReportEntry(ImageAnalysisJob job)
+    {
+        AnalysisResult? analysisResult = null;
+        if (!string.IsNullOrEmpty(job.AnalysisResultJson))
+        {
+            try
+            {
+                analysisResult = JsonSerializer.Deserialize<AnalysisResult>(
+                    job.AnalysisResultJson,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
+                );
+            }
+            catch (JsonException jsonEx)
+            {
+                _logger.LogWarning(jsonEx, "Failed to deserialize AnalysisResultJson for JobId {JobId} in CSV report.", job.Id);
+            }
+        }
+
+        return new ImageAnalysisReportEntry
+        {
+            JobId = job.Id,
+            OriginalFileName = job.OriginalFileName,
+            UploadTimestamp = job.UploadTimestamp,
+            Status = job.Status,
+            ProcessingStartedTimestamp = job.ProcessingStartedTimestamp,
+            CompletedTimestamp = job.CompletedTimestamp,
+            BlobUri = job.BlobUri,
+
+            TopPredictionTag = analysisResult?.Success == true && analysisResult.Predictions.Any()
+                                ? analysisResult.Predictions.First().TagName
+                                : "N/A",
+
+            TopPredictionProbability = analysisResult?.Success == true && analysisResult.Predictions.Any()
+                                        ? Math.Round(analysisResult.Predictions.First().Probability, 2) // Round for display
+                                        : 0.0,
+
+            AllPredictionsSummary = analysisResult?.Success == true && analysisResult.Predictions.Any()
+                                    ? string.Join("; ", analysisResult.Predictions.Select(p => $"{p.TagName}: {Math.Round(p.Probability, 1)}%"))
+                                    : (analysisResult?.ErrorMessage ?? (job.Status == "Failed" ? "Failed" : "N/A")),
+
+            ErrorMessage = analysisResult?.Success == false
+                            ? analysisResult.ErrorMessage
+                            : (job.Status == "Failed" && string.IsNullOrEmpty(analysisResult?.ErrorMessage) ? "Processing Failed" : string.Empty)
+        };
     }
 }
