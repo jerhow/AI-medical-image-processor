@@ -132,6 +132,13 @@ public class UploadModel : PageModel
         return Page();
     }
 
+    /// <summary>
+    /// Handles the request to check the analysis status of a job.
+    /// This method is called via AJAX from the client-side JavaScript.
+    /// It proxies the request to the API and returns the status of the analysis.
+    /// </summary>
+    /// <param name="jobId"></param>
+    /// <returns></returns>
     public async Task<JsonResult> OnGetAnalysisStatusAsync(Guid jobId)
     {
         _logger.LogInformation("Proxying request for analysis status of JobId: {JobId}", jobId);
@@ -143,13 +150,13 @@ public class UploadModel : PageModel
         {
             _logger.LogError("API Base URL (ApiSettings:BaseUrl) is not configured in the Web App.");
             return new JsonResult(new { error = "Server configuration error: API endpoint not specified." })
-            { StatusCode = StatusCodes.Status500InternalServerError };
+                { StatusCode = StatusCodes.Status500InternalServerError };
         }
         if (string.IsNullOrEmpty(apiKey))
         {
             _logger.LogError("API Key (ApiClientSettings:ApiKey) is not configured in the Web App.");
             return new JsonResult(new { error = "Server configuration error: API key for backend service is missing." })
-            { StatusCode = StatusCodes.Status500InternalServerError };
+                { StatusCode = StatusCodes.Status500InternalServerError };
         }
 
         var actualApiStatusEndpoint = $"{apiBaseUrl.TrimEnd('/')}/api/images/{jobId}/analysis";
@@ -189,13 +196,13 @@ public class UploadModel : PageModel
         {
             _logger.LogError(httpEx, "Network error proxying API request for JobId {JobId} to {StatusEndpoint}", jobId, actualApiStatusEndpoint);
             return new JsonResult(new { error = "Network error during proxy to backend API." })
-                { StatusCode = StatusCodes.Status503ServiceUnavailable };
+            { StatusCode = StatusCodes.Status503ServiceUnavailable };
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Unexpected error proxying API request for JobId {JobId}", jobId);
             return new JsonResult(new { error = "Unexpected server error while proxying request." })
-                { StatusCode = StatusCodes.Status500InternalServerError };
+            { StatusCode = StatusCodes.Status500InternalServerError };
         }
     }
 
