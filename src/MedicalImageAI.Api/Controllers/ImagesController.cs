@@ -1,14 +1,17 @@
+using System.Globalization;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using CsvHelper;
 using MedicalImageAI.Api.Models;
 using MedicalImageAI.Api.Services;
 using MedicalImageAI.Api.BackgroundServices.Interfaces;
 using MedicalImageAI.Api.Data;
 using MedicalImageAI.Api.Entities;
-using System.Text.Json;
-using Microsoft.EntityFrameworkCore;
-using CsvHelper;
-using System.Text;
-using System.Globalization;
+
+using MedicalImageAI.Api.Services.Interfaces;
 
 namespace MedicalImageAI.Api.Controllers;
 
@@ -67,7 +70,7 @@ public class ImagesController : ControllerBase
         string uniqueBlobName = string.Empty;
         string baseBlobUri = string.Empty;
         string blobUriWithSas = string.Empty;
-        Guid jobId = Guid.Empty; // The DB record ID
+        Guid jobId = Guid.Empty;
 
         try
         {
@@ -85,78 +88,125 @@ public class ImagesController : ControllerBase
             }
             _logger.LogInformation("Generated SAS URI via service.");
 
-            // --- Create and save initial DB record ---
             var newJob = new ImageAnalysisJob
             {
-                // NOTE: Constructor sets Id, UploadTimestamp, and default Status ("Queued")
                 OriginalFileName = imageFile.FileName,
-                BlobUri = baseBlobUri, // Base URI (without SAS)
+                BlobUri = baseBlobUri,
             };
 
             try
             {
-                _dbContext.ImageAnalysisJobs.Add(newJob); // Use Add, AddAsync is usually for special cases
+                _dbContext.ImageAnalysisJobs.Add(newJob);
                 await _dbContext.SaveChangesAsync();
-                jobId = newJob.Id; // Get the generated ID
+                jobId = newJob.Id;
                 _logger.LogInformation("Created initial job record with ID: {JobId} for blob {BlobUri}", jobId, baseBlobUri);
             }
             catch (Exception dbEx)
             {
                 _logger.LogError(dbEx, "Failed to save initial job record to database for blob {BlobUri}", baseBlobUri);
-                // TODO: Delete the uploaded blob here to avoid orphaned files
                 return StatusCode(StatusCodes.Status500InternalServerError, "Failed to create analysis job record.");
             }
-            // --- /Create and save initial DB record ---
 
-            // --- Dispatch work item to the background queue ---
-            // Defines the work item as a Func delegate. Captures necessary variables.
             Func<IServiceProvider, CancellationToken, Task> workItem = async (sp, ct) =>
             {
                 _logger.LogInformation("Background task started for JobId: {JobId}, Blob: {BlobUri}", jobId, baseBlobUri);
-                AnalysisResult analysisResult = new AnalysisResult();
-                string finalStatus = "Failed";
-                string analysisJson = string.Empty;
+                
+                // This will hold the result from Custom Vision, and then we'll add OCR text to it.
+                AnalysisResult? combinedAnalysisResult = null; 
+                string? ocrTextFromService = null; // To store text from OCR service for the dedicated DB column
+                string finalStatus = "Failed"; // Default to Failed
+                string? analysisJsonToSave = null; // JSON string for the AnalysisResultJson DB column
 
-                // Resolve scoped services HERE, inside the delegate
                 var scopedDbContext = sp.GetRequiredService<ApplicationDbContext>();
                 var scopedVisionService = sp.GetRequiredService<ICustomVisionService>();
+                var scopedOcrService = sp.GetRequiredService<IOcrService>(); // Resolve IOcrService
 
                 ImageAnalysisJob? jobToProcess = null;
+
                 try
                 {
-                    // Mark as Processing in DB
+                    // 1. Fetch job and mark as Processing
                     jobToProcess = await scopedDbContext.ImageAnalysisJobs.FindAsync(new object[] { jobId }, ct);
                     if (jobToProcess == null)
                     {
                         _logger.LogError("Job record {JobId} not found when attempting to start processing.", jobId);
-                        return; // Exit task if job not found
+                        return; 
                     }
                     jobToProcess.Status = "Processing";
                     jobToProcess.ProcessingStartedTimestamp = DateTime.UtcNow;
-                    await scopedDbContext.SaveChangesAsync(ct);
+                    await scopedDbContext.SaveChangesAsync(ct); // Save "Processing" state
                     _logger.LogInformation("Job {JobId} status updated to Processing.", jobId);
 
-                    // Call the Custom Vision service to analyze the image
-                    analysisResult = await scopedVisionService.AnalyzeImageAsync(blobUriWithSas); // Use SAS URI here
+                    // 2. Perform Custom Vision (Classification) Analysis
+                    combinedAnalysisResult = await scopedVisionService.AnalyzeImageAsync(blobUriWithSas); // This has Predictions, ErrorMessage, Success
+                    _logger.LogInformation("Custom Vision analysis finished for JobId {JobId}. CV Success: {CVSuccess}", jobId, combinedAnalysisResult?.Success);
 
-                    // Prepare results for DB
-                    analysisJson = JsonSerializer.Serialize(analysisResult, new JsonSerializerOptions { WriteIndented = false });
-                    finalStatus = analysisResult?.Success == true ? "Completed" : "Failed";
-                    _logger.LogInformation("Background analysis finished for JobId {JobId}. Status: {Status}", jobId, finalStatus);
+                    // 3. Perform OCR Analysis
+                    try
+                    {
+                        _logger.LogInformation("Attempting OCR for JobId {JobId}", jobId);
+                        ocrTextFromService = await scopedOcrService.ExtractTextFromImageUrlAsync(blobUriWithSas);
+                        if (!string.IsNullOrEmpty(ocrTextFromService))
+                        {
+                            _logger.LogInformation("OCR successful for JobId {JobId}. Extracted text length: {Length}", jobId, ocrTextFromService.Length);
+                        }
+                        else
+                        {
+                            _logger.LogInformation("OCR for JobId {JobId} returned no text or an empty string.", jobId);
+                        }
+                    }
+                    catch (Exception ocrEx)
+                    {
+                        _logger.LogError(ocrEx, "OCR analysis sub-task failed for JobId {JobId}. OCR text will be null.", jobId);
+                        // ocrTextFromService remains null. This doesn't necessarily fail the whole job if CV was okay.
+                    }
+
+                    // 4. Populate OcrText in the combinedAnalysisResult object
+                    if (combinedAnalysisResult != null) // Should be instantiated by CustomVisionService
+                    {
+                        combinedAnalysisResult.OcrText = ocrTextFromService;
+                    }
+                    else // Fallback if CustomVisionService somehow returned null
+                    {
+                         _logger.LogWarning("CustomVisionService.AnalyzeImageAsync returned null for JobId {JobId}. Creating new AnalysisResult.", jobId);
+                        combinedAnalysisResult = new AnalysisResult { 
+                            Timestamp = DateTime.UtcNow, 
+                            Predictions = new List<PredictionModel>(),
+                            OcrText = ocrTextFromService,
+                            ErrorMessage = "Custom Vision analysis did not produce a result."
+                        };
+                    }
+                    
+                    // 5. Determine final status and serialize the (now combined) result for DB
+                    finalStatus = combinedAnalysisResult.Success ? "Completed" : "Failed"; // Primarily based on CV success
+                    analysisJsonToSave = JsonSerializer.Serialize(
+                        combinedAnalysisResult, 
+                        new JsonSerializerOptions { WriteIndented = false, DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull }
+                    );
+                    
+                    _logger.LogInformation("Background processing logic complete for JobId {JobId}. Final determined status: {Status}", jobId, finalStatus);
                 }
-                catch (Exception taskEx)
+                catch (Exception taskEx) // Catches errors from CV service call or DB updates within the main try
                 {
-                    _logger.LogError(taskEx, "Error during background analysis task for JobId {JobId}", jobId);
+                    _logger.LogError(taskEx, "Error during main background analysis task processing for JobId {JobId}", jobId);
                     finalStatus = "Failed";
-                    // Serialize a minimal error object if analysisResult is null
-                    analysisJson = JsonSerializer.Serialize(new AnalysisResult { ErrorMessage = $"Background task failed: {taskEx.Message}", Predictions = new List<PredictionModel>() });
+
+                    // Create or update an AnalysisResult to store the error for JSON serialization
+                    if (combinedAnalysisResult == null)
+                    {
+                        combinedAnalysisResult = new AnalysisResult { Timestamp = DateTime.UtcNow, Predictions = new List<PredictionModel>() };
+                    }
+                    combinedAnalysisResult.ErrorMessage = combinedAnalysisResult.ErrorMessage ?? $"Background task error: {taskEx.Message}";
+                    combinedAnalysisResult.OcrText = ocrTextFromService; // Include any OCR text obtained before the error
+                    analysisJsonToSave = JsonSerializer.Serialize(combinedAnalysisResult);
                 }
-                finally // Ensure DB is updated with the final status and result
+                finally 
                 {
                     try
                     {
-                        // Re-fetch or use existing jobToProcess if still valid and DB context is not disposed by error
-                        if (jobToProcess == null)
+                        // Re-fetch jobToProcess ONLY if it's null and we need to ensure we have the latest for update.
+                        // If it was fetched and updated to "Processing", it should still be tracked by scopedDbContext.
+                        if (jobToProcess == null && jobId != Guid.Empty) 
                         {
                             jobToProcess = await scopedDbContext.ImageAnalysisJobs.FindAsync(new object[] { jobId }, ct);
                         }
@@ -164,21 +214,21 @@ public class ImagesController : ControllerBase
                         if (jobToProcess != null)
                         {
                             jobToProcess.Status = finalStatus;
-                            jobToProcess.AnalysisResultJson = analysisJson;
+                            jobToProcess.AnalysisResultJson = analysisJsonToSave; // Contains CV + OCR + Error (if any)
+                            jobToProcess.OcrResultText = ocrTextFromService;      // Store raw OCR text in dedicated column
                             jobToProcess.CompletedTimestamp = DateTime.UtcNow;
                             await scopedDbContext.SaveChangesAsync(ct);
-                            _logger.LogInformation("Successfully updated job record {JobId} with final status {Status}", jobId, finalStatus);
+                            _logger.LogInformation("Successfully updated job record {JobId} with final status {Status}. OCR text length: {Length}", 
+                                jobId, finalStatus, jobToProcess.OcrResultText?.Length ?? 0);
                         }
                         else
                         {
-                            _logger.LogError("Job record {JobId} not found for final update. This should not happen if initial save succeeded.", jobId);
+                            _logger.LogError("Job record {JobId} not found for final update.", jobId);
                         }
                     }
                     catch (Exception finalDbEx)
                     {
                         _logger.LogCritical(finalDbEx, "CRITICAL: Failed to update job record {JobId} with final status {Status} after analysis attempt.", jobId, finalStatus);
-                        // This is a critical failure. The job processed, but its final state couldn't be saved.
-                        // TODO: May add this to a dead-letter queue or some other form of alerting.
                     }
                 }
             };
@@ -186,19 +236,14 @@ public class ImagesController : ControllerBase
             await _backgroundQueue.QueueBackgroundWorkItemAsync(workItem);
             _logger.LogInformation("Analysis task queued for JobId: {JobId}", jobId);
 
-            // Return 202 Accepted with the Job ID and other relevant info
             var acceptedResponse = new UploadAcceptedResponse
             {
                 Message = "File uploaded successfully. Analysis queued.",
                 JobId = jobId,
-                FileName = uniqueBlobName, // The unique name given by the server
-                BlobUri = baseBlobUri    // The base URI of the blob
+                FileName = uniqueBlobName,
+                BlobUri = baseBlobUri 
             };
-
-            // Optionally generate a status check URL when we have that endpoint ready:
-            // string statusUrl = Url.ActionLink(nameof(GetAnalysisStatus), "Images", new { jobId = jobId });
-            // return Accepted(statusUrl, acceptedResponse);
-            return Accepted(acceptedResponse); // Simplified for now
+            return Accepted(acceptedResponse);
         }
         catch (Exception ex)
         {

@@ -1,10 +1,11 @@
 using Azure.Storage.Blobs;
 using Microsoft.EntityFrameworkCore;
-using MedicalImageAI.Api.Services;
 using MedicalImageAI.Api.BackgroundServices;
 using MedicalImageAI.Api.BackgroundServices.Interfaces;
 using MedicalImageAI.Api.Data;
 using MedicalImageAI.Api.Middleware;
+using MedicalImageAI.Api.Services;
+using MedicalImageAI.Api.Services.Interfaces;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -92,6 +93,9 @@ if (string.IsNullOrEmpty(connectionString))
     throw new InvalidOperationException("Azure SQL connection string 'AzureSql:ConnectionString' not found.");
 }
 builder.Services.AddDbContext<ApplicationDbContext>(options => options.UseSqlServer(connectionString));
+
+// Register OCR Service
+builder.Services.AddScoped<IOcrService, OcrService>();
 
 var app = builder.Build();
 

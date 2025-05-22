@@ -1,5 +1,5 @@
-using System.ComponentModel.DataAnnotations; // For [Key] attribute
-using System.ComponentModel.DataAnnotations.Schema; // For [Column(TypeName = "...")]
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace MedicalImageAI.Api.Entities;
 
@@ -24,6 +24,9 @@ public class ImageAnalysisJob
     // Could be normalized into separate tables for more complex querying, but JSON is fine for now
     [Column(TypeName = "nvarchar(max)")] // Ensure enough space for JSON
     public string? AnalysisResultJson { get; set; }
+
+    [Column(TypeName = "nvarchar(max)")] // For potentially large amounts of extracted text
+    public string? OcrResultText { get; set; }
 
     public DateTime? ProcessingStartedTimestamp { get; set; }
     public DateTime? CompletedTimestamp { get; set; }
