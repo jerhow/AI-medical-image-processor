@@ -68,6 +68,18 @@
     @if (Model.PageResponse?.JobId != null && Model.PageResponse.JobId != Guid.Empty)
     {
         <script>
+
+            @* Helper function to escape HTML to remove some XSS vectors *@
+            function escapeHtml(unsafe) {
+                if (unsafe === null || typeof unsafe === 'undefined') return '';
+                return unsafe
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/"/g, "&quot;")
+                    .replace(/'/g, "&#039;");
+            }
+
             (function () {
                 const jobId = "@Model.PageResponse.JobId";
                 @* In this case, PageModel exposes Configuration as a public property.
@@ -99,6 +111,16 @@
                     }
                      else {
                         content += '<p>No predictions available or analysis did not complete successfully.</p>';
+                    }
+
+                    if (data.analysis && data.analysis.hasOwnProperty('ocrText')) { // Check if ocrText property exists
+                        content += '<hr/><h6>Extracted Text (OCR):</h6>';
+                        if (data.analysis.ocrText && data.analysis.ocrText.trim() !== "" && data.analysis.ocrText !== "No text blocks found") { // Check if there's actual text
+                            @* Using <pre> to preserve formatting like line breaks from the OCR result *@
+                            content += `<pre style="white-space: pre-wrap; word-wrap: break-word; border: 1px solid #ccc; padding: 10px; background-color: #f9f9f9;">${escapeHtml(data.analysis.ocrText)}</pre>`;
+                        } else {
+                            content += `<p><em>${escapeHtml(data.analysis.ocrText) || "No text blocks found by OCR."}</em></p>`;
+                        }
                     }
                     resultsArea.innerHTML = content;
                 }
@@ -134,7 +156,7 @@
                         .catch(error => {
                             console.error('Error fetching analysis status:', error);
                             resultsArea.innerHTML = `<p class="text-danger">Error fetching analysis status: ${error.message}. Please try refreshing.</p>`;
-                            // Optionally stop polling on error or retry a few times
+                            @* Optionally stop polling on error or retry a few times *@
                         });
                 }
 
