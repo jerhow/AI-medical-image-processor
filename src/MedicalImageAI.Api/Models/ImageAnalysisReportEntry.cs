@@ -13,4 +13,5 @@ public class ImageAnalysisReportEntry
     public string? AllPredictionsSummary { get; set; } // Optional: a string summary of all predictions
     public string? ErrorMessage { get; set; } // If status is "Failed"
     public string? BlobUri { get; set; }
+    public string? ExtractedOcrText { get; set; }
 }

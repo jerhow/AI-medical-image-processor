@@ -483,7 +483,9 @@ public class ImagesController : ControllerBase
 
             ErrorMessage = analysisResult?.Success == false
                             ? analysisResult.ErrorMessage
-                            : (job.Status == "Failed" && string.IsNullOrEmpty(analysisResult?.ErrorMessage) ? "Processing Failed" : string.Empty)
+                            : (job.Status == "Failed" && string.IsNullOrEmpty(analysisResult?.ErrorMessage) ? "Processing Failed" : string.Empty),
+
+            ExtractedOcrText = job.OcrResultText
         };
     }
 }
