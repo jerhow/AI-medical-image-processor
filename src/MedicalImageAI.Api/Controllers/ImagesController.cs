@@ -46,11 +46,13 @@ public class ImagesController : ControllerBase
     }
 
     /// <summary>
-    /// Controller action to handle image uploads.
-    /// Validates the file, uploads it to Azure Blob Storage, generates a SAS URI for analysis,
-    /// queues a background task (`ImageAnalysisJob`) for Custom Vision analysis, and marks the job as "Queued" in the database.
-    /// /// Returns a 202 Accepted response with the blob URI and a message.
-    /// The queued `ImageAnalysisJob` will also update its DB status to "Processing" when the background task starts and to "Completed" or "Failed" based on the analysis result.
+    /// Uploads an image file for analysis.
+    /// Validates the file type and size, uploads it to blob storage, and queues a background task for analysis.
+    /// The background task (a Func delegate) performs image analysis using Custom Vision (pathology prediction and object detection) and OCR services, 
+    /// and store the results in the database. The job ID is returned in the response, which can be used to check the status of the analysis later.
+    /// If the upload is successful, returns a 202 Accepted response with job details.
+    /// If the upload fails validation, returns a 400 Bad Request response with an error message.
+    /// If an unexpected error occurs, returns a 500 Internal Server Error response.
     /// </summary>
     /// <param name="imageFile"></param>
     /// <returns></returns>
@@ -114,6 +116,7 @@ public class ImagesController : ControllerBase
                 // This will hold the result from Custom Vision, and then we'll add OCR text to it.
                 AnalysisResult? combinedAnalysisResult = null; 
                 string? ocrTextFromService = null; // To store text from OCR service for the dedicated DB column
+                List<DetectedObject>? detectedObjectsFromService = null; // To store Object Detection results
                 string finalStatus = "Failed"; // Default to Failed
                 string? analysisJsonToSave = null; // JSON string for the AnalysisResultJson DB column
 
@@ -160,25 +163,47 @@ public class ImagesController : ControllerBase
                         _logger.LogError(ocrEx, "OCR analysis sub-task failed for JobId {JobId}. OCR text will be null.", jobId);
                         // ocrTextFromService remains null. This doesn't necessarily fail the whole job if CV was okay.
                     }
+                    
+                    // 4. Perform object detection analysis
+                    try
+                    {
+                        _logger.LogInformation("Attempting Object Detection for JobId {JobId}", jobId);
+                        detectedObjectsFromService = await scopedVisionService.DetectObjectsAsync(blobUriWithSas);
+                        if (detectedObjectsFromService != null && detectedObjectsFromService.Any())
+                        {
+                            _logger.LogInformation("Object Detection successful for JobId {JobId}. Found {Count} objects.", jobId, detectedObjectsFromService.Count);
+                        }
+                        else
+                        {
+                            _logger.LogInformation("Object Detection for JobId {JobId} returned no objects or an empty list.", jobId);
+                        }
+                    }
+                    catch (Exception odEx)
+                    {
+                        _logger.LogError(odEx, "Object Detection sub-task failed for JobId {JobId}.", jobId);
+                        // detectedObjectsFromService remains null or empty.
+                    }
 
-                    // 4. Populate OcrText in the combinedAnalysisResult object
+                    // 5. Populate OcrText in the combinedAnalysisResult object
                     if (combinedAnalysisResult != null) // Should be instantiated by CustomVisionService
                     {
                         combinedAnalysisResult.OcrText = ocrTextFromService;
+                        combinedAnalysisResult.DetectedObjects = detectedObjectsFromService ?? new List<DetectedObject>(); // Ensure list is not null
                     }
                     else // Fallback if CustomVisionService somehow returned null
                     {
-                         _logger.LogWarning("CustomVisionService.AnalyzeImageAsync returned null for JobId {JobId}. Creating new AnalysisResult.", jobId);
-                        combinedAnalysisResult = new AnalysisResult { 
-                            Timestamp = DateTime.UtcNow, 
+                        _logger.LogWarning("CustomVisionService.AnalyzeImageAsync returned null for JobId {JobId}. Creating new AnalysisResult.", jobId);
+                        combinedAnalysisResult = new AnalysisResult
+                        {
+                            Timestamp = DateTime.UtcNow,
                             Predictions = new List<PredictionModel>(),
                             OcrText = ocrTextFromService,
                             ErrorMessage = "Custom Vision analysis did not produce a result."
                         };
                     }
                     
-                    // 5. Determine final status and serialize the (now combined) result for DB
-                    finalStatus = combinedAnalysisResult.Success ? "Completed" : "Failed"; // Primarily based on CV success
+                    // 6. Determine final status and serialize the (now combined) result for DB
+                    finalStatus = combinedAnalysisResult.Success ? "Completed" : "Failed"; // Still primarily based on CV success (not OCR or OD)
                     analysisJsonToSave = JsonSerializer.Serialize(
                         combinedAnalysisResult, 
                         new JsonSerializerOptions { WriteIndented = false, DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull }
@@ -252,6 +277,14 @@ public class ImagesController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Retrieves the analysis status for a specific image analysis job.
+    /// This endpoint allows our frontend (via proxy endpoint), or other API clients, to check the status of a previously submitted image analysis job.
+    /// It returns the job ID, status, timestamps for upload, processing start, and completion,
+    /// as well as the analysis results if available.
+    /// </summary>
+    /// <param name="jobId"></param>
+    /// <returns></returns>
     [HttpGet("{jobId}/analysis", Name = "GetAnalysisStatus")]
     [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(AnalysisStatusResponse))]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
