@@ -179,7 +179,15 @@ public class UploadModel : PageModel
 
                 // Return a JsonResult, which will re-serialize the string.
                 // We could also have sent the raw string with ContentResult.
-                var apiData = JsonSerializer.Deserialize<object>(jsonResponseString, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                AnalysisStatusResponse? apiData = JsonSerializer.Deserialize<AnalysisStatusResponse>(jsonResponseString, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+                if (apiData == null)
+                {
+                    _logger.LogError("Deserialization of API response for JobId {JobId} returned null.", jobId);
+                    return new JsonResult(new { error = "Failed to parse API response." })
+                        { StatusCode = StatusCodes.Status500InternalServerError };
+                }
+
                 return new JsonResult(apiData);
             }
             else
