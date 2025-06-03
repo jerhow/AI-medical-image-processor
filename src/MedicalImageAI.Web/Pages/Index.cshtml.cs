@@ -12,8 +12,9 @@ public class IndexModel : PageModel
         _logger = logger;
     }
 
-    public void OnGet()
+    public IActionResult OnGet()
     {
-
+        // TEMPORARY redirect (HTTP 302):
+        return RedirectToPage("/Upload");
     }
 }
