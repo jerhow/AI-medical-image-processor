@@ -11,7 +11,7 @@
         <p>Select an image file (PNG, JPG, JPEG, BMP - Max 4MB) to upload for analysis.</p>
         <p>Analysis will be performed in the background. This page will confirm if your upload was accepted for processing.</p>
         
-        <form method="post" enctype="multipart/form-data" class="mt-4">
+        <form method="post" enctype="multipart/form-data" class="mt-4" id="uploadImageForm">
             <div asp-validation-summary="ModelOnly" class="text-danger"></div> @* Shows model-level errors *@
 
             <div class="mb-3">
@@ -20,7 +20,10 @@
                 <span asp-validation-for="UploadedImage" class="text-danger"></span>
             </div>
             
-            <button type="submit" class="btn btn-primary">Upload and Queue for Analysis</button>
+            <button type="submit" class="btn btn-primary" id="uploadButton">
+                <span id="uploadButtonText">Upload and Queue for Analysis</span>
+                <span id="uploadSpinner" class="spinner-border spinner-border-sm" role="status" aria-hidden="true" style="display: none;"></span>
+            </button>
         </form>
     </div>
 </div>
@@ -180,7 +183,7 @@
                             });
                             odListHtml += '</ul>';
                             detectedObjectsListDiv.innerHTML = odListHtml;
-                            console.log.LogInformation("Bounding boxes drawn.");
+                            console.log("Bounding boxes drawn.");
                         };
 
                         imgElement.onerror = () => {
@@ -250,7 +253,30 @@
                     if (!apiBaseUrl) console.error("API Base URL not available to start polling.");
                     resultsArea.innerHTML = "<p class='text-danger'>Could not start polling: Configuration missing.</p>"
                 }
+
+                
             })();
         </script>
     }
+
+    <script>
+        // Setup the upload button spinner to show while the form is submitting
+        document.addEventListener('DOMContentLoaded', function () {
+            const uploadForm = document.getElementById('uploadImageForm');
+            const uploadButton = document.getElementById('uploadButton');
+            const uploadButtonText = document.getElementById('uploadButtonText');
+            const uploadSpinner = document.getElementById('uploadSpinner');
+
+            if (uploadForm && uploadButton && uploadButtonText && uploadSpinner) {
+                uploadForm.addEventListener('submit', function(event) {
+                    uploadButton.disabled = true;
+                    uploadButtonText.textContent = 'Uploading...';
+                    uploadSpinner.style.display = 'inline-block';
+                    // The button will automatically reset to its original state when the page re-renders after the form submission
+                });
+            } else {
+                console.warn("Upload form or button elements not found for spinner setup.");
+            }
+        });
+    </script>
 }
