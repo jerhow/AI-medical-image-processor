@@ -39,6 +39,10 @@ This project is a web application designed to demonstrate the integration of var
   </video>
 </p>
 
+[![Watch Demo Video (click to play with sound)](./docs/videos/aimip_demo_01_preview.gif)](./docs/videos/aimip_demo_01.webm)
+
+[Click here to watch the full demo video with audio (WebM)](./docs/videos/aimip_demo_01.webm)
+
 This section will feature animated GIFs showcasing:
 * The image upload process.
 * The display of classification results.
