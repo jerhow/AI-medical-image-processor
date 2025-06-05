@@ -32,6 +32,12 @@ This project is a web application designed to demonstrate the integration of var
     </p>
     (You would create a 'docs/images' folder in your repo for these)
 -->
+<p align="center">
+  <video controls width="700" autoplay muted loop>
+    <source src="./docs/videos/aimip_demo_01.webm" type="video/webm">
+    Your browser does not support the video tag. You can <a href="./docs/videos/aimip_demo_01.webm">download the video here</a> as a fallback.
+  </video>
+</p>
 
 This section will feature animated GIFs showcasing:
 * The image upload process.
@@ -228,6 +234,7 @@ Unit tests are implemented for key backend components of the API project to ensu
 * (Optional) Azure CLI
 * SQL Server instance (LocalDB, Express, Docker, or Azure SQL dev instance)
 * (Optional) Database management tool (Azure Data Studio, SSMS)
+* Azure Custom Vision and AI Vision (formerly Computer Vision) services
 
 ### Cloning the Repository
 
@@ -285,8 +292,8 @@ dotnet test
 
 ## Future Enhancements / Roadmap
 
-* Further refinement of AI models (more data, exploring different model architectures if needed).
-* Support for additional medical imaging modalities (e.g., MRI, CT).
+* Further refinement of AI models (more data, additional pathology classifications, exploring different model architectures if needed).
+* Support for additional medical imaging modalities (e.g., MRI, CT scans, dermatology images).
 * More advanced filtering and querying options for the CSV report.
 * Enhanced UI for reviewing analysis results with more interactivity.
 * Implementation of user accounts and role-based access for the web application.
