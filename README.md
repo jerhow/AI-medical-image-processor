@@ -24,15 +24,6 @@ This project is a web application designed to demonstrate the integration of var
 
 ## Showcase: Features in Action
 
-<!-- 
-    TODO: This is where you will embed your animated GIF(s) or key screenshots.
-    Example:
-    <p align="center">
-      <img src="docs/images/demo-upload-and-results.gif" alt="Demonstrating image upload and analysis results display">
-    </p>
-    (You would create a 'docs/images' folder in your repo for these)
--->
-
 This video demonstrates:
 * The image upload process.
 * The display of classification results.
@@ -131,14 +122,7 @@ This project utilizes a modern, cloud-native technology stack:
 
 This application is built using a decoupled, service-oriented architecture designed for clarity, maintainability, and to efficiently handle potentially long-running AI processing tasks. The primary components include a user-facing Web Application, a backend API Application that orchestrates AI tasks, and various Azure cloud services for AI capabilities, data storage, and hosting.
 
-<!-- 
-    TODO: Insert your architecture diagram image here.
-    Example: 
-    <p align="center">
-        <img src="docs/images/architecture-diagram.png" alt="Application Architecture Diagram" width="700">
-    </p>
-    (Create a 'docs/images' folder in your repo for this image)
--->
+![aimip_architecture_diagram](https://github.com/user-attachments/assets/8f1b71de-83f0-4230-bdd0-b1a1cde0c7e5)
 
 ### Core Application Components
 
@@ -237,6 +221,7 @@ Unit tests are implemented for key backend components of the API project to ensu
 * (Optional) Azure CLI
 * SQL Server instance (LocalDB, Express, Docker, or Azure SQL dev instance)
 * (Optional) Database management tool (Azure Data Studio, SSMS)
+* Azure Storage account
 * Azure Custom Vision and AI Vision (formerly Computer Vision) services
 
 ### Cloning the Repository
@@ -254,18 +239,18 @@ Initialize User Secrets for both API and Web App projects (`dotnet user-secrets 
 ```bash
 dotnet user-secrets set "AzureSql:ConnectionString" "YOUR_LOCAL_SQL_SERVER_CONNECTION_STRING"
 dotnet user-secrets set "BlobStorage:ConnectionString" "UseDevelopmentStorage=true" # For Azurite emulator, or your Azure Storage connection string
-dotnet user-secrets set "BlobStorage:ContainerName" "uploaded-images-dev"
+dotnet user-secrets set "BlobStorage:ContainerName" "YOUR_CONTAINER_NAME"
 dotnet user-secrets set "CustomVision:PredictionKey" "YOUR_CV_PREDICTION_KEY"
 dotnet user-secrets set "CustomVision:Endpoint" "YOUR_CV_ENDPOINT_URL"
 dotnet user-secrets set "CustomVision:ProjectId" "YOUR_CV_CLASSIFICATION_PROJECT_ID"
 dotnet user-secrets set "CustomVision:PublishedModelName" "YOUR_CV_CLASSIFICATION_PUBLISHED_MODEL_NAME"
 dotnet user-secrets set "CustomVisionOD:ProjectId" "YOUR_CV_OBJECT_DETECTION_PROJECT_ID"
 dotnet user-secrets set "CustomVisionOD:PublishedModelName" "YOUR_CV_OD_PUBLISHED_MODEL_NAME"
-dotnet user-secrets set "CustomVisionOD:ConfidenceThreshold" "0.5" 
+dotnet user-secrets set "CustomVisionOD:ConfidenceThreshold" "YOUR_CONFIDENCE_THRESHOLD" 
 dotnet user-secrets set "CognitiveServicesVision:Endpoint" "YOUR_AZURE_AI_VISION_ENDPOINT"
 dotnet user-secrets set "CognitiveServicesVision:Key" "YOUR_AZURE_AI_VISION_KEY"
 dotnet user-secrets set "Security:ApiKey" "YOUR_STRONG_DEV_API_KEY"
-dotnet user-secrets set "BackgroundQueue:Capacity" "100" 
+dotnet user-secrets set "BackgroundQueue:Capacity" "YOUR_CAPACITY_VALUE" 
 ```
 
 **2. Web App Project (`src/MedicalImageAI.Web`):**
@@ -295,14 +280,14 @@ dotnet test
 
 ## Future Enhancements / Roadmap
 
-* Further refinement of AI models (more data, additional pathology classifications, exploring different model architectures if needed).
-* Support for additional medical imaging modalities (e.g., MRI, CT scans, dermatology images).
-* More advanced filtering and querying options for the CSV report.
-* Enhanced UI for reviewing analysis results with more interactivity.
-* Implementation of user accounts and role-based access for the web application.
-* More comprehensive unit and potentially integration test coverage.
-* Deeper error handling and resilience patterns (e.g., retry mechanisms for background tasks).
-* Rework the UI into a responsive design, suitable for use on a tablet or as an embeddable UI component.
+* Further refinement of AI models (more data, additional pathology classifications, exploring different model architectures if needed)
+* Support for additional medical imaging modalities (e.g., MRI, CT scans, dermatology images)
+* More advanced filtering and querying options for the CSV report
+* Enhanced UI for reviewing analysis results with more interactivity
+* Implementation of user accounts and role-based access for the web application
+* More comprehensive unit and potentially integration test coverage
+* Deeper error handling and resilience patterns (e.g., retry mechanisms for background tasks)
+* Refactor the UI toward a responsive design, suitable for use on a tablet or as an embeddable UI component
 
 ## License
 
