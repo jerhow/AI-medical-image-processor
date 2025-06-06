@@ -32,23 +32,22 @@ This project is a web application designed to demonstrate the integration of var
     </p>
     (You would create a 'docs/images' folder in your repo for these)
 -->
-<p align="center">
-  <video controls width="700" autoplay muted loop>
-    <source src="./docs/videos/aimip_demo_01.webm" type="video/webm">
-    Your browser does not support the video tag. You can <a href="./docs/videos/aimip_demo_01.webm">download the video here</a> as a fallback.
-  </video>
-</p>
 
-[![Watch Demo Video (click to play with sound)](./docs/videos/aimip_demo_01_preview.png)](./docs/videos/aimip_demo_01.webm)
-
-[Click here to watch the full demo video with audio (WebM)](./docs/videos/aimip_demo_01.webm)
-
-This section will feature animated GIFs showcasing:
+This video demonstrates:
 * The image upload process.
 * The display of classification results.
 * The display of extracted OCR text.
 * The rendering of object detection bounding boxes on an image.
-* The CSV report download functionality.
+
+_Video has sound (unmute to hear)_
+
+https://github.com/user-attachments/assets/1d20674b-0b2a-49a0-b44a-a446e50e7934
+
+This video demonstrates CSV report download functionality:
+
+_Video has sound (unmute to hear)_
+
+https://github.com/user-attachments/assets/d7c11c3b-7997-4eb3-96a6-c211bfdbd52b
 
 ## The Use Case / Problem Solved
 
@@ -73,7 +72,7 @@ This project integrates three distinct AI capabilities to analyze medical images
 * **Purpose:** To categorize uploaded chest X-ray images into predefined classes, such as "Normal" (No Finding), "Cardiomegaly," "Effusion," and "Pneumothorax." This provides a high-level assessment of the image.
 * **Model & Training:**
     * A custom image classification model was trained using **Azure Custom Vision**.
-    * The training process was iterative, starting with an initial dataset sourced from the [NIH Chest X-ray Dataset](https://www.nih.gov/news-events/news-releases/nih-clinical-center-provides-one-largest-publicly-available-chest-x-ray-datasets-scientific-community).
+    * The training process was iterative, starting with an initial dataset sourced from the [NIH Chest X-ray Dataset](https://www.kaggle.com/datasets/nih-chest-xrays/data).
     * Key considerations during training included:
         * **Data Curation:** Selecting appropriate images for each category.
         * **Data Augmentation & Balancing:** Strategies to ensure a sufficient and relatively balanced number of images per tag (e.g., starting with ~1000-1500 images per category for a 4-pathology model).
