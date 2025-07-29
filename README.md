@@ -40,7 +40,7 @@ _Video has sound (unmute to hear)_
 
 https://github.com/user-attachments/assets/d7c11c3b-7997-4eb3-96a6-c211bfdbd52b
 
-## Use Case / Problem Solved
+## Use Case: The process we are attempting to make more efficient
 
 Medical image review can be a time-consuming process, requiring careful attention from trained professionals. This project explores how AI can be leveraged to assist in this domain by providing preliminary insights and automating certain analytical tasks. 
 
