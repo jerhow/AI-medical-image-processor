@@ -22,7 +22,7 @@ This project is a web application designed to demonstrate the integration of var
 
 *(Note: This is a portfolio project. To manage costs, the deployed Azure services are not always running. Demo available upon request.)*
 
-## Showcase: Features in Action
+## Demonstration
 
 This video demonstrates:
 * The image upload process.
@@ -40,7 +40,7 @@ _Video has sound (unmute to hear)_
 
 https://github.com/user-attachments/assets/d7c11c3b-7997-4eb3-96a6-c211bfdbd52b
 
-## The Use Case / Problem Solved
+## Use Case / Problem Solved
 
 Medical image review can be a time-consuming process, requiring careful attention from trained professionals. This project explores how AI can be leveraged to assist in this domain by providing preliminary insights and automating certain analytical tasks. 
 
