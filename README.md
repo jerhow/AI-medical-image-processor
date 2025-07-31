@@ -120,7 +120,7 @@ This project utilizes a modern, cloud-native technology stack:
 
 ## Architecture Overview
 
-This application is built using a decoupled, service-oriented architecture designed for clarity, maintainability, and to efficiently handle potentially long-running AI processing tasks. The primary components include a user-facing Web Application, a backend API Application that orchestrates AI tasks, and various Azure cloud services for AI capabilities, data storage, and hosting.
+This application is built using a decoupled, service-oriented architecture designed for clarity, maintainability, and to efficiently handle potentially long-running AI processing tasks. The primary components include a user-facing Web Application, a backend API that orchestrates AI tasks, and various Azure cloud services for AI capabilities, data storage, and hosting.
 
 ![aimip_architecture_diagram](https://github.com/user-attachments/assets/8f1b71de-83f0-4230-bdd0-b1a1cde0c7e5)
 
