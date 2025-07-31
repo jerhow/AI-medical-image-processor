@@ -52,7 +52,7 @@ Key objectives and potential uses include:
     * Extract textual data from images for record-keeping or further processing.
     * Provide a platform for experimenting with and evaluating different AI models on medical imagery.
 * **Educational Tool:** Serving as a comprehensive example of a full-stack .NET application integrated with modern cloud AI services and CI/CD practices.
-* **Versatile AI Platform:** While this initial version focuses on chest X-ray analysis (classification, OCR, and pacemaker detection), the underlying architecture is designed for broader applicability. By training new AI models in Azure Custom Vision for different imaging modalities (e.g., MRI, CT scans, dermatology photographs, pathology slides) or for identifying other anomalies and objects, the system can be readily extended to support a wider range of medical image analysis tasks. This demonstrates a flexible framework for integrating various AI-driven image interpretations.
+* **Versatile AI Platform:** While this initial version focuses on chest X-ray analysis (classification, OCR, and pacemaker detection), the underlying architecture is designed for broader applicability. By training new AI models in Azure Custom Vision for different imaging modalities (e.g., MRI, CT scans, dermatology photographs, pathology slides) or for identifying other anomalies and objects, the system can be readily extended to support a wider range of medical image analysis tasks. I envisioned this as a flexible framework for integrating various AI-driven image interpretations.
 
 ## Leveraging Artificial Intelligence
 
@@ -68,13 +68,13 @@ This project integrates three distinct AI capabilities to analyze medical images
         * **Data Curation:** Selecting appropriate images for each category.
         * **Data Augmentation & Balancing:** Strategies to ensure a sufficient and relatively balanced number of images per tag (e.g., starting with ~1000-1500 images per category for a 4-pathology model).
         * **Iterative Refinement:** Multiple training iterations were performed, analyzing performance metrics (Precision, Recall, Average Precision) and adjusting categories/data to improve model accuracy and reliability.
-    * This process demonstrates skills in data preparation for AI, model training with cloud AI services, and iterative model performance evaluation.
+    * This process requires data preparation for AI, model training with cloud AI services, and iterative model performance evaluation.
 
 ### 2. Optical Character Recognition (OCR - Azure AI Vision)
 
 * **Purpose:** To automatically detect and extract any printed or handwritten text visible on the uploaded medical images. This could include patient information (in anonymized datasets), dates, annotations, or device markings.
 * **Implementation:** Utilizes the pre-trained **Read API** from **Azure AI Vision service**. This powerful OCR engine handles text extraction without requiring custom model training for this specific feature.
-* This demonstrates the ability to integrate general-purpose, pre-trained AI services for specific data extraction tasks.
+* This requires integrating general-purpose, pre-trained AI services for specific data extraction tasks.
 
 ### 3. Object Detection (Azure Custom Vision)
 
@@ -209,7 +209,6 @@ Unit tests are implemented for key backend components of the API project to ensu
 
 * **Frameworks Used:** xUnit and Moq.
 * **Scope:** Includes tests for services like `BlobStorageService` and `BackgroundQueue`.
-* This demonstrates a commitment to robust development practices.
 
 ## Getting Started / Local Setup
 
@@ -285,7 +284,7 @@ dotnet test
 * More advanced filtering and querying options for the CSV report
 * Enhanced UI for reviewing analysis results with more interactivity
 * Implementation of user accounts and role-based access for the web application
-* More comprehensive unit and potentially integration test coverage
+* More comprehensive unit test coverage, and potential integration test coverage
 * Deeper error handling and resilience patterns (e.g., retry mechanisms for background tasks)
 * Refactor the UI toward a responsive design, suitable for use on a tablet or as an embeddable UI component
 
