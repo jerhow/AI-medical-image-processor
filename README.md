@@ -86,7 +86,7 @@ This project integrates three distinct AI capabilities to analyze medical images
         * **Data Labeling:** Manually drawing precise bounding boxes around each instance of a "Pacemaker" in the training images and tagging them. This is a critical and detailed step for object detection.
         * **Iterative Training:** Training the model and evaluating its performance using object detection metrics like Mean Average Precision (mAP), Precision, and Recall.
         * **Thresholding:** Applying a confidence threshold to the predictions to balance detection accuracy and reduce false positives.
-    * This feature showcases skills in preparing and labeling data for object detection, training specialized detector models, and processing bounding box outputs.
+    * This feature requires preparation and labeling of data for object detection, training specialized detector models, and processing bounding box outputs.
 
 ## Technology Stack
 
